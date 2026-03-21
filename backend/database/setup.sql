@@ -1,6 +1,4 @@
-CREATE DATABASE IF NOT EXISTS project_learning;
-USE project_learning;
-
+-- Database defined in connection
 CREATE TABLE IF NOT EXISTS Users (
     id INT AUTO_INCREMENT PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
