@@ -1,0 +1,27 @@
+# dependencies
+node_modules/
+
+# environments
+.env
+.env.*
+!.env.example
+
+# logs
+*.log
+npm-debug.log*
+
+# build output
+dist/
+build/
+build_err.txt
+build_error.txt
+build_log.txt
+build_output.txt
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# backend uploads
+backend/uploads/*
+!backend/uploads/.gitkeep
