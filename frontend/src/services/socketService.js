@@ -3,6 +3,7 @@
 
 import io from 'socket.io-client'
 import { useAuthStore } from '../store/authStore'
+import { BACKEND_BASE_URL } from './api'
 
 class SocketService {
   constructor() {
@@ -21,7 +22,7 @@ class SocketService {
 
     return new Promise((resolve, reject) => {
       try {
-        this.socket = io(process.env.REACT_APP_SOCKET_URL || 'http://localhost:5000', {
+        this.socket = io(import.meta.env.VITE_SOCKET_URL || BACKEND_BASE_URL || 'http://localhost:5000', {
           auth: {
             token: token
           },

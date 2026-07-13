@@ -30,11 +30,22 @@ initSocket(server);
 const allowedOrigins = [
   'http://localhost:3000',
   'http://127.0.0.1:3000',
+  'http://localhost:5173',
+  'http://127.0.0.1:5173',
+  'https://project-lms-six.vercel.app',
   process.env.FRONTEND_URL
-].filter(Boolean);
+].filter(Boolean).map(origin => origin.replace(/\/$/, ''));
 
 app.use(cors({
-  origin: allowedOrigins,
+  origin: function (origin, callback) {
+    if (!origin) return callback(null, true);
+    const normalizedOrigin = origin.replace(/\/$/, '');
+    if (allowedOrigins.includes(normalizedOrigin) || /^https:\/\/project-lms.*\.vercel\.app$/.test(normalizedOrigin)) {
+      callback(null, true);
+    } else {
+      callback(null, false);
+    }
+  },
   credentials: true
 }));
 app.use(express.json());
