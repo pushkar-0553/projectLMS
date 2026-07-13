@@ -1,0 +1,1 @@
+ALTER TABLE Notifications MODIFY COLUMN notification_type ENUM('task_assigned','submission_update','message','announcement','meeting','batch_update','class_reminder','deadline','interview','feedback','alert','general') NOT NULL;

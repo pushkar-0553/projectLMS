@@ -55,6 +55,24 @@ class User {
   }
 
   static async findByRole(role) {
+    if (role === 'student') {
+      const [rows] = await pool.execute(
+        `SELECT u.id, u.name, u.email, u.role, u.mobile, u.batch, u.created_at,
+          sbm.batch_id,
+          sbm.sub_batch_id,
+          b.name as batch_name,
+          sb.name as sub_batch_name
+         FROM Users u
+         LEFT JOIN StudentBatchMap sbm ON u.id = sbm.student_id
+         LEFT JOIN Batches b ON sbm.batch_id = b.id
+         LEFT JOIN SubBatches sb ON sbm.sub_batch_id = sb.id
+         WHERE u.role = ?
+         ORDER BY u.created_at DESC`,
+        [role]
+      );
+      return rows;
+    }
+
     const [rows] = await pool.execute(
       'SELECT id, name, email, role, mobile, batch, created_at FROM Users WHERE role = ? ORDER BY created_at DESC',
       [role]

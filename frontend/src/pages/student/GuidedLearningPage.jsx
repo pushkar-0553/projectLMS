@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
-import { projectAPI, progressAPI } from '../../services/api'
+import { projectAPI, progressAPI, resolveAssetUrl } from '../../services/api'
 import Button from '../../components/common/Button'
 import Card from '../../components/common/Card'
 
@@ -196,6 +196,12 @@ const GuidedLearningPage = () => {
           <h1>{project.title}</h1>
           <p className="project-desc">{project.description}</p>
           
+          {project.thumbnail && (
+            <div className="project-banner-container" style={{ margin: '20px 0', borderRadius: '12px', overflow: 'hidden', maxHeight: '240px' }}>
+              <img src={resolveAssetUrl(project.thumbnail)} alt={project.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            </div>
+          )}
+          
           <div className="project-meta">
             <span className="meta-badge level">Level {project.level}</span>
             <span className="meta-badge difficulty">{project.difficulty || 'Medium'}</span>
@@ -252,7 +258,7 @@ const GuidedLearningPage = () => {
                         <h3>📸 Reference Images</h3>
                         <div className="step-images">
                           {images.map((img, i) => (
-                            <img key={i} src={`${import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000'}${img}`} alt={`Step ${index + 1} reference ${i + 1}`} className="step-image" />
+                            <img key={i} src={resolveAssetUrl(img)} alt={`Step ${index + 1} reference ${i + 1}`} className="step-image" />
                           ))}
                         </div>
                       </div>
@@ -357,7 +363,7 @@ const GuidedLearningPage = () => {
                         <h3>📸 Reference Images</h3>
                         <div className="step-images">
                           {parseImages(currentStep.images).map((img, i) => (
-                            <img key={i} src={`${import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000'}${img}`} alt={`Step ${currentStepIndex + 1} reference ${i + 1}`} className="step-image" />
+                            <img key={i} src={resolveAssetUrl(img)} alt={`Step ${currentStepIndex + 1} reference ${i + 1}`} className="step-image" />
                           ))}
                         </div>
                       </div>

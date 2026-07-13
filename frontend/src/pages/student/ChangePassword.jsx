@@ -86,7 +86,7 @@ const ChangePassword = () => {
         </header>
 
         <div className="glass-card-modern p-8 shadow-xl">
-          <form onSubmit={handleSubmit} className="space-y-6">
+          <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
             {error && (
               <div className="alert-error p-4 rounded-xl flex items-center gap-3 animate-shake">
                 <AlertCircle className="icon-sm" />
@@ -103,52 +103,65 @@ const ChangePassword = () => {
 
             <div className="form-group-modern">
               <label>Current Password</label>
-              <div className="relative">
+              <div className="relative" style={{ position: 'relative' }}>
+                <Lock className="absolute text-slate-400" size={16} style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
                 <input
                   type={showPassword ? "text" : "password"}
                   name="currentPassword"
                   value={formData.currentPassword}
                   onChange={handleChange}
                   placeholder="••••••••"
-                  className="w-full pr-10"
+                  className="w-full pr-10 pl-10"
+                  style={{ boxSizing: 'border-box', paddingLeft: '38px', paddingRight: '38px' }}
                   required
                 />
                 <button 
                   type="button" 
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                  className="absolute text-slate-400 hover:text-slate-600"
+                  style={{ position: 'absolute', right: '14px', top: '50%', transform: 'translateY(-50%)', border: 'none', background: 'none', cursor: 'pointer' }}
                   onClick={() => setShowPassword(!showPassword)}
                 >
-                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                  {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>
               </div>
             </div>
 
             <div className="form-group-modern">
               <label>New Password</label>
-              <input
-                type="password"
-                name="newPassword"
-                value={formData.newPassword}
-                onChange={handleChange}
-                placeholder="Min 6 characters"
-                required
-                minLength={6}
-              />
+              <div className="relative" style={{ position: 'relative' }}>
+                <Lock className="absolute text-slate-400" size={16} style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
+                <input
+                  type="password"
+                  name="newPassword"
+                  value={formData.newPassword}
+                  onChange={handleChange}
+                  placeholder="Min 6 characters"
+                  className="w-full pl-10"
+                  style={{ boxSizing: 'border-box', paddingLeft: '38px' }}
+                  required
+                  minLength={6}
+                />
+              </div>
             </div>
 
             <div className="form-group-modern">
               <label>Confirm New Password</label>
-              <input
-                type="password"
-                name="confirmPassword"
-                value={formData.confirmPassword}
-                onChange={handleChange}
-                placeholder="Confirm your new password"
-                required
-              />
+              <div className="relative" style={{ position: 'relative' }}>
+                <Lock className="absolute text-slate-400" size={16} style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
+                <input
+                  type="password"
+                  name="confirmPassword"
+                  value={formData.confirmPassword}
+                  onChange={handleChange}
+                  placeholder="Confirm new password"
+                  className="w-full pl-10"
+                  style={{ boxSizing: 'border-box', paddingLeft: '38px' }}
+                  required
+                />
+              </div>
             </div>
 
-            <div className="pt-4">
+            <div className="pt-4" style={{ marginTop: '10px' }}>
               <Button
                 type="submit"
                 variant="primary"

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
-import { projectAPI } from '../../services/api'
+import { projectAPI, resolveAssetUrl } from '../../services/api'
 import Button from '../../components/common/Button'
 import { BookOpen, Target, Clock, ChevronRight, Filter, Search, Award, Info, Activity } from 'lucide-react'
 
@@ -161,6 +161,11 @@ const ProjectLearning = () => {
               <div className="projects-grid-modern">
                 {levelProjects.map((project) => (
                   <div key={project.id} className="card project-item-card hover-lift">
+                    {project.thumbnail && (
+                      <div className="project-card-image-wrapper" style={{ height: '160px', margin: '-1.5rem -1.5rem 1.25rem -1.5rem', overflow: 'hidden', borderTopLeftRadius: '1.25rem', borderTopRightRadius: '1.25rem' }}>
+                        <img src={resolveAssetUrl(project.thumbnail)} alt={project.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      </div>
+                    )}
                     <div className="project-card-top flex-between mb-4">
                        <span className={`badge ${getLevelColorClass(level)}`}>{getLevelTitle(level)}</span>
                        <div className="flex gap-2">

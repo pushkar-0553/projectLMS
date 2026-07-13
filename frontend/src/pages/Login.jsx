@@ -31,7 +31,16 @@ const Login = () => {
       const result = await login(formData.email, formData.password)
 
       if (result.success) {
-        navigate('/dashboard')
+        const userRole = result.user?.role
+        if (userRole === 'admin') {
+          navigate('/admin')
+        } else if (userRole === 'coordinator') {
+          navigate('/coordinator')
+        } else if (userRole === 'faculty') {
+          navigate('/faculty')
+        } else {
+          navigate('/dashboard')
+        }
       } else {
         setError(result.error)
       }

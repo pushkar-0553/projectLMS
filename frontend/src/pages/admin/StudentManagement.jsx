@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { userAPI } from '../../services/api'
 import Button from '../../components/common/Button'
 import { 
@@ -16,11 +16,13 @@ import {
   ChevronLeft,
   Loader2,
   MoreVertical,
-  Filter
+  Filter,
+  Eye
 } from 'lucide-react'
 import * as XLSX from 'xlsx'
 
 const StudentManagement = () => {
+  const navigate = useNavigate()
   const [students, setStudents] = useState([])
   const [loading, setLoading] = useState(true)
   const [showCreateForm, setShowCreateForm] = useState(false)
@@ -353,6 +355,14 @@ const StudentManagement = () => {
                       </td>
                       <td className="text-right">
                          <div className="flex justify-end gap-2">
+                            <Button 
+                              variant="outline" 
+                              size="small"
+                              onClick={() => navigate(`/admin/student/${student.id}`)}
+                              className="text-indigo-600 hover:bg-indigo-50"
+                            >
+                              <Eye className="icon-xs mr-1" /> Profile
+                            </Button>
                             <Button 
                               variant="ghost" 
                               size="small"

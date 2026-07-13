@@ -22,8 +22,8 @@ async function executeDatabaseFile(filename) {
     
     console.log(`Executing ${filename}...`);
     
-    // Execute the SQL file
-    await connection.execute(sql);
+    // Execute the SQL file using query instead of execute for multiple statements
+    await connection.query(sql);
     
     console.log(`✅ ${filename} executed successfully!`);
     
@@ -35,11 +35,9 @@ async function executeDatabaseFile(filename) {
 
 // Usage examples
 async function main() {
+  const filename = process.argv[2] || 'setup.sql';
   // For fresh setup
-  await executeDatabaseFile('setup.sql');
-  
-  // OR for migration
-  // await executeDatabaseFile('migrate_safe.sql');
+  await executeDatabaseFile(filename);
 }
 
 main();

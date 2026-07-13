@@ -17,7 +17,7 @@ const MyProgress = () => {
   const fetchProgress = async () => {
     try {
       const response = await projectAPI.getProgress()
-      setProgress(response.data)
+      setProgress(response.data.projects || response.data || [])
     } catch (error) {
       console.error('Failed to fetch progress:', error)
     } finally {
@@ -33,7 +33,7 @@ const MyProgress = () => {
     )
   }
 
-  const completedProjects = progress.filter(p => p.completed).length
+  const completedProjects = progress.filter(p => p.completed || p.is_completed || ((p.step_completed || p.completed_steps || 0) >= (p.total_steps || 1))).length
   const totalProjects = progress.length
   const overallProgress = totalProjects > 0 ? (completedProjects / totalProjects) * 100 : 0
 
@@ -102,43 +102,50 @@ const MyProgress = () => {
             </div>
           ) : (
             <div className="progress-list-modern">
-              {progress.map((item) => (
-                <div key={item.project_id} className="progress-row-card shadow-soft hover-lift mb-4">
+              {progress.map((item) => {
+                const projectId = item.project_id || item.id
+                const completedSteps = item.step_completed || item.completed_steps || 0
+                const totalSteps = item.total_steps || 0
+                const progressPercentage = item.progress_percentage ?? (totalSteps ? Math.round((completedSteps / totalSteps) * 100) : 0)
+                const isCompleted = item.completed || item.is_completed
+
+                return (
+                <div key={projectId} className="progress-row-card shadow-soft hover-lift mb-4">
                   <div className="row-main-info">
-                    <div className="project-type-indicator" style={{background: item.completed ? 'var(--success)' : 'var(--primary)'}}></div>
+                    <div className="project-type-indicator" style={{background: isCompleted ? 'var(--success)' : 'var(--primary)'}}></div>
                     <div className="project-text">
-                      <h4 className="font-bold">{item.title}</h4>
+                      <h4 className="font-bold">{item.title || item.project_title}</h4>
                       <div className="meta-flex">
                         <span className="text-xs text-muted">Level {item.level}</span>
                         <span className="dot"></span>
-                        <span className="text-xs text-muted">{item.trainer || 'System Guided'}</span>
+                       <span className="text-xs text-muted">{item.trainer || 'System Guided'}</span>
                       </div>
                     </div>
                   </div>
 
                   <div className="row-progress-section">
                     <div className="flex-between mb-2">
-                       <span className="text-xs font-bold">{item.progress_percentage || 0}%</span>
-                       <span className="text-xs text-muted">{item.step_completed}/{item.total_steps} Steps</span>
+                       <span className="text-xs font-bold">{progressPercentage}%</span>
+                       <span className="text-xs text-muted">{completedSteps}/{totalSteps} Steps</span>
                     </div>
                     <div className="progress-bar">
                       <div 
                         className="progress-fill" 
                         style={{ 
-                          width: `${item.progress_percentage || 0}%`,
-                          background: item.completed ? 'var(--success)' : 'var(--primary)'
+                          width: `${progressPercentage}%`,
+                          background: isCompleted ? 'var(--success)' : 'var(--primary)'
                         }}
                       ></div>
                     </div>
                   </div>
 
                   <div className="row-action-section">
-                    {item.completed ? (
+                    {isCompleted ? (
                       <div className="status-badge-success">
                         <CheckCircle2 className="icon-xs" /> Completed
                       </div>
                     ) : (
-                      <Link to={`/guided-learning/${item.project_id}`}>
+                      <Link to={`/guided-learning/${projectId}`}>
                         <Button variant="secondary" size="small" className="btn-icon-right">
                           Resume <ChevronRight className="icon-xs" />
                         </Button>
@@ -146,7 +153,7 @@ const MyProgress = () => {
                     )}
                   </div>
                 </div>
-              ))}
+              )})}
             </div>
           )}
         </div>

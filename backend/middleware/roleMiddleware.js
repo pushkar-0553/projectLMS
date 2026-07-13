@@ -29,13 +29,19 @@ const requireRole = (roles) => {
 
 const isAdmin = requireRole(['admin']);
 const isStudent = requireRole(['student']);
-const isCoordinator = requireRole(['coordinator']);
+const isCoordinator = requireRole(['coordinator']); // Issue #17 fix: only coordinators
+const isFaculty = requireRole(['faculty']); // Issue #17 fix: only faculty
+const isAdminOrCoordinator = requireRole(['admin', 'coordinator']);
 const isAdminOrStudent = requireRole(['admin', 'student']);
+const isAdminOrFaculty = requireRole(['admin', 'faculty']);
 
 module.exports = {
   requireRole,
   isAdmin,
   isStudent,
   isCoordinator,
-  isAdminOrStudent
+  isFaculty,
+  isAdminOrCoordinator,
+  isAdminOrStudent,
+  isAdminOrFaculty
 };

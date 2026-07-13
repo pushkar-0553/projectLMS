@@ -8,25 +8,29 @@ const { isCoordinator } = require('../middleware/roleMiddleware');
 router.use(authenticateToken);
 router.use(isCoordinator);
 
-// Get all students with progress overview
-router.get('/students', coordinatorController.getStudents);
+// Sub-batch management
+router.post('/create-subbatch', coordinatorController.createSubBatch);
+router.get('/my-subbatches', coordinatorController.getMySubBatches);
+router.put('/subbatch/:subBatchId/class-link', coordinatorController.updateSubBatchClassLink);
+router.post('/assign-student', coordinatorController.assignStudentToSubBatch);
 
-// Get pending approvals
-router.get('/pending-approvals', coordinatorController.getPendingApprovals);
+// Task management
+router.post('/task/create', coordinatorController.createTask);
+router.post('/task/assign', coordinatorController.assignTask);
+router.get('/my-tasks', coordinatorController.getMyTasks);
+router.get('/task/:taskId/submissions', coordinatorController.getTaskSubmissions);
 
-// Get specific student's progress
-router.get('/student/:studentId/progress', coordinatorController.getStudentProgress);
+// Submission review
+router.post('/submission/review', coordinatorController.reviewSubmission);
 
-// Approve a step submission
-router.post('/approve/:progressId', coordinatorController.approveStep);
-
-// Reject a step submission
-router.post('/reject/:progressId', coordinatorController.rejectStep);
-
-// Get coordinator dashboard stats
+// Dashboard & Approvals
 router.get('/dashboard-stats', coordinatorController.getDashboardStats);
-
-// Get project stats for graphs
+router.get('/pending-approvals', coordinatorController.getPendingApprovals);
 router.get('/project-stats', coordinatorController.getProjectStats);
+router.get('/student/:studentId/progress', coordinatorController.getStudentProgress);
+router.post('/approve-step/:progressId', coordinatorController.approveStep);
+router.post('/reject-step/:progressId', coordinatorController.rejectStep);
+
+router.get('/history', coordinatorController.getMyHistory);
 
 module.exports = router;

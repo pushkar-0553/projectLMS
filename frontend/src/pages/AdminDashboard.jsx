@@ -1,27 +1,36 @@
 import React, { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import { projectAPI } from '../services/api'
+import { projectAPI, adminAPI, userAPI } from '../services/api'
 import Button from '../components/common/Button'
 import ProjectUploadForm from '../components/forms/ProjectUploadForm'
-import { BookOpen, Users, Upload, Clock, Activity, Settings, User, Eye, Trash2, ChevronRight, Layers, BarChart2 } from 'lucide-react'
+import { BookOpen, Users, Upload, Clock, Activity, Settings, User, Eye, Trash2, ChevronRight, Layers, BarChart2, Shield, GraduationCap, UserCheck } from 'lucide-react'
 
 const AdminDashboard = () => {
   const { user } = useAuth()
   const [projects, setProjects] = useState([])
+  const [activityLogs, setActivityLogs] = useState([])
   const [showUploadForm, setShowUploadForm] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [facultyCount, setFacultyCount] = useState(0)
 
   useEffect(() => {
-    fetchProjects()
+    fetchDashboardData()
   }, [])
 
-  const fetchProjects = async () => {
+  const fetchDashboardData = async () => {
     try {
-      const response = await projectAPI.getAll()
-      setProjects(response.data)
+      setLoading(true)
+      const [projectsRes, activityRes, facultyRes] = await Promise.all([
+        projectAPI.getAll(),
+        adminAPI.getHistory(),
+        userAPI.getAllFaculties()
+      ])
+      setProjects(projectsRes.data)
+      setActivityLogs(activityRes.data ? activityRes.data.slice(0, 5) : [])
+      setFacultyCount(facultyRes.data.length)
     } catch (error) {
-      console.error('Failed to fetch projects:', error)
+      console.error('Failed to fetch dashboard data:', error)
     } finally {
       setLoading(false)
     }
@@ -29,14 +38,14 @@ const AdminDashboard = () => {
 
   const handleProjectUploaded = () => {
     setShowUploadForm(false)
-    fetchProjects()
+    fetchDashboardData()
   }
 
   const handleDeleteProject = async (projectId) => {
     if (window.confirm('Are you sure you want to delete this project?')) {
       try {
         await projectAPI.deleteProject(projectId)
-        fetchProjects()
+        fetchDashboardData()
         alert('Project deleted successfully!')
       } catch (error) {
         console.error('Failed to delete project:', error)
@@ -70,28 +79,17 @@ const AdminDashboard = () => {
                   <Users className="icon-sm" /> Manage Students
                 </Button>
               </Link>
-              <Button
-                className={`btn-primary ${showUploadForm ? 'active' : ''}`}
-                onClick={() => setShowUploadForm(!showUploadForm)}
-              >
-                <Upload className="icon-sm" />
-                {showUploadForm ? 'Cancel Upload' : 'New Project'}
-              </Button>
+              <Link to="/admin/faculties" className="action-link">
+                <Button className="btn-glass">
+                  <UserCheck className="icon-sm" /> Manage Faculty
+                </Button>
+              </Link>
             </div>
           </div>
         </div>
       </header>
 
       <main className="container dashboard-main">
-        {showUploadForm && (
-          <div className="upload-section slide-down">
-            <ProjectUploadForm
-              onProjectUploaded={handleProjectUploaded}
-              onCancel={() => setShowUploadForm(false)}
-            />
-          </div>
-        )}
-
         {/* Stats Grid */}
         <section className="stats-section">
           <div className="stats-grid">
@@ -128,11 +126,21 @@ const AdminDashboard = () => {
                 <Activity className="stat-icon" />
               </div>
             </div>
+
+            <div className="stat-card info">
+              <div className="stat-content">
+                <p className="stat-label">Faculty/Mentors</p>
+                <h3 className="stat-number">{facultyCount}</h3>
+              </div>
+              <div className="stat-icon-wrapper">
+                <UserCheck className="stat-icon" />
+              </div>
+            </div>
           </div>
         </section>
 
         {/* Projects Table Section */}
-        <section className="projects-section">
+        <section className="dashboard-grid-2-1">
           <div className="table-card">
             <div className="card-header">
               <h2>Recent Modules</h2>
@@ -160,8 +168,6 @@ const AdminDashboard = () => {
                     <tr>
                       <th>Project Details</th>
                       <th>Level</th>
-                      <th>Duration</th>
-                      <th>Instructor</th>
                       <th className="text-right">Actions</th>
                     </tr>
                   </thead>
@@ -175,29 +181,13 @@ const AdminDashboard = () => {
                             </div>
                             <div className="project-text">
                               <strong>{project.title}</strong>
-                              <span className="description">{project.description?.substring(0, 60)}...</span>
                             </div>
                           </div>
                         </td>
                         <td>
-                          <div className="badges-wrapper">
-                            <span className={`badge level-badge level-${project.level}`}>
-                              Level {project.level}
-                            </span>
-                            <span className={`badge diff-badge difficulty-${project.difficulty?.toLowerCase() || 'medium'}`}>
-                              {project.difficulty || 'Medium'}
-                            </span>
-                          </div>
-                        </td>
-                        <td>
-                          <div className="flex-center text-muted text-sm">
-                            <Clock className="icon-xs mr-1" /> {project.estimated_time || 60}m
-                          </div>
-                        </td>
-                        <td>
-                          <div className="flex-center text-muted text-sm">
-                            <User className="icon-xs mr-1" /> {project.trainer || 'Unassigned'}
-                          </div>
+                          <span className={`badge level-badge level-${project.level}`}>
+                            Level {project.level}
+                          </span>
                         </td>
                         <td>
                           <div className="action-buttons justify-end">
@@ -223,11 +213,47 @@ const AdminDashboard = () => {
             {projects.length > 5 && (
               <div className="card-footer">
                 <Link to="/admin/projects" className="view-all-link">
-                  View All {projects.length} Projects <ChevronRight className="icon-xs" />
+                  View All <ChevronRight className="icon-xs" />
                 </Link>
               </div>
             )}
           </div>
+
+          <aside className="activity-card">
+            <div className="card-header">
+              <h2>Recent Activity</h2>
+              <Link to="/admin/history">
+                <Shield className="icon-sm text-primary" />
+              </Link>
+            </div>
+            <div className="activity-feed-mini">
+              {activityLogs.length === 0 ? (
+                <div className="empty-activity">
+                  <Clock className="icon-md text-muted" />
+                  <p>No recent activity logs.</p>
+                </div>
+              ) : (
+                activityLogs.map((log) => (
+                  <div key={log.id} className="activity-item-mini">
+                    <div className="activity-icon-sm">
+                      <Activity className="icon-xs" />
+                    </div>
+                    <div className="activity-info">
+                      <p className="activity-desc">
+                        <strong>{log.user_name}</strong> {log.description}
+                      </p>
+                      <span className="activity-time">{new Date(log.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+            <div className="card-footer">
+              <Link to="/admin/history" className="view-all-link">
+                View Audit Log <ChevronRight className="icon-xs" />
+              </Link>
+            </div>
+          </aside>
         </section>
       </main>
 
@@ -462,6 +488,11 @@ const AdminDashboard = () => {
         .stat-card.warning .stat-icon-wrapper {
           background: #fff7ed;
           color: #f97316;
+        }
+
+        .stat-card.info .stat-icon-wrapper {
+          background: #f0f9ff;
+          color: #0ea5e9;
         }
 
         .stat-icon {
@@ -717,6 +748,98 @@ const AdminDashboard = () => {
           }
           .project-text .description {
             max-width: 200px;
+          }
+        }
+
+        /* --- New Activity Feed Styles --- */
+        .dashboard-grid-2-1 {
+          display: grid;
+          grid-template-columns: 2fr 1fr;
+          gap: 2rem;
+          align-items: start;
+        }
+
+        .activity-card {
+          background: white;
+          border-radius: 1rem;
+          box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
+          border: 1px solid #e2e8f0;
+          overflow: hidden;
+          display: flex;
+          flex-direction: column;
+        }
+
+        .activity-feed-mini {
+          padding: 1rem;
+          display: flex;
+          flex-direction: column;
+          gap: 1rem;
+          min-height: 300px;
+        }
+
+        .activity-item-mini {
+          display: flex;
+          gap: 0.75rem;
+          padding-bottom: 1rem;
+          border-bottom: 1px solid #f1f5f9;
+        }
+
+        .activity-item-mini:last-child {
+          border-bottom: none;
+        }
+
+        .activity-icon-sm {
+          width: 32px;
+          height: 32px;
+          background: #f1f5f9;
+          border-radius: 8px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: #64748b;
+          flex-shrink: 0;
+        }
+
+        .activity-info {
+          display: flex;
+          flex-direction: column;
+          gap: 0.25rem;
+        }
+
+        .activity-desc {
+          margin: 0;
+          font-size: 0.875rem;
+          color: #334155;
+          line-height: 1.4;
+        }
+
+        .activity-desc strong {
+          color: #0f172a;
+        }
+
+        .activity-time {
+          font-size: 0.75rem;
+          color: #94a3b8;
+        }
+
+        .empty-activity {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          padding: 3rem 0;
+          color: #94a3b8;
+          text-align: center;
+        }
+
+        .empty-activity p {
+          margin-top: 0.5rem;
+          font-size: 0.875rem;
+        }
+
+        @media (max-width: 1024px) {
+          .dashboard-grid-2-1 {
+            grid-template-columns: 1fr;
           }
         }
       `}</style>

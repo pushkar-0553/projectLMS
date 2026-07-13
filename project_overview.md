@@ -1,77 +1,267 @@
-# LMS Platform Project Overview
+# 📚 Project Overview — Student Execution & Mentorship Platform (LMS)
 
-## 1. System Objective
-This web application is a robust **Learning Management System (LMS)** specifically tailored for project-based learning. Instead of solely watching videos or reading textual documentation, students acquire knowledge by building "projects" structured sequentially through detailed, actionable steps. 
-
-## 2. Core Architecture
-The system is built on a modern MERN-like stack utilizing MySQL instead of MongoDB:
-- **Frontend:** React.js (Bootstrapped with Vite), using React Router for navigation and `recharts` for data visualization. Context API is used for authentication states.
-- **Backend:** Node.js with Express.js.
-- **Database:** MySQL.
-- **File Storage:** Local file system via `multer` (Uploads are stored in `/uploads/` for project thumbnails and step-by-step imagery).
-
-## 3. Project Modes
-The platform splits learning into two distinct methodologies depending on the project type:
-
-### A. Simple Projects
-- **Goal:** Fast, self-paced learning.
-- **Flow:** The student opens the project and sees **all steps simultaneously** in a scrollable, accordion-style page. The student completes them independently at their own pace without needing external validation.
-
-### B. Main Projects (Structured Learning)
-- **Goal:** Rigorous, strictly-evaluated learning simulating a real lab environment.
-- **Flow:** The student only sees **one step at a time**. After reading the instructions and examining the reference images, the student completes the task on their machine and clicks "Submit for Approval". They are locked out of the next step until a **Lab Coordinator** physically reviews their work and explicitly approves the step via the Coordinator Portal.
+A **full-stack Learning Management System** built with **React + Vite** (frontend) and **Node.js + Express + MySQL** (backend), featuring **4 user roles**, **real-time communication**, and **comprehensive academic management**.
 
 ---
 
-## 4. User Roles & Permissions
+## 🏗️ Architecture at a Glance
 
-The application enforces Role-Based Access Control (RBAC) powered by JWT (JSON Web Tokens).
+```mermaid
+graph TB
+    subgraph Frontend["Frontend (React + Vite — port 3000)"]
+        App["App.jsx Router"]
+        Auth["AuthContext"]
+        Socket["SocketContext"]
+        API["API Service Layer (Axios)"]
+    end
 
-### 1. Admin
-- **Role:** The highest authority governing the system's content and users.
-- **Capabilities:**
-  - Create, view, update, and delete **Projects**.
-  - Upload project thumbnails and define detailed, multi-image **Steps** for projects.
-  - Manage accounts for Students and Lab Coordinators (Create/Delete).
-  - Access a modernized visual dashboard displaying platform-wide project statistics (Total Projects, Tier distribution, etc.).
+    subgraph Backend["Backend (Express.js — port 5000)"]
+        Server["server.js"]
+        Routes["13 Route Modules"]
+        Controllers["14 Controllers"]
+        Models["12 Models"]
+        Middleware["Auth + Role Middleware"]
+        SocketIO["Socket.io"]
+    end
 
-### 2. Lab Coordinator
-- **Role:** The evaluator and mentor.
-- **Capabilities:**
-  - View all enrolled students and their current progress across all projects.
-  - Review "Pending Approvals" for **Main Projects**.
-  - Provide constructive textual feedback and choose to **Approve** or **Reject** a student's step submission.
-  - Access an analytics dashboard (featuring `recharts` Bar Charts) to monitor active student distribution across various projects.
+    subgraph Database["MySQL Database"]
+        Tables["15+ Tables"]
+    end
 
-### 3. Student
-- **Role:** The end-user consuming the educational content.
-- **Capabilities:**
-  - Browse available projects (Simple & Main) via the `/project-learning` catalog.
-  - Track their progress percentage visually.
-  - Consume multi-step learning modules containing text explanations and image screenshots.
-  - Submit steps for evaluation (if Main project) and read Coordinator feedback.
-
----
-
-## 5. Key Frontend Directories
-
-- `src/components/common/`: Reusable UI elements (Buttons, Cards, Modals, Progress Bars).
-- `src/components/layout/`: Layout wrappers defining the sticky navigation sidebars tailored to each user role (`AdminLayout`, `CoordinatorLayout`, `StudentLayout`).
-- `src/components/forms/`: Complex form handling, primarily the `ProjectUploadForm` which handles multi-part form data (including dynamic arrays of images for steps).
-- `src/pages/`: Top-level navigational views, grouped by domain (`/admin`, `/coordinator`, `/student`, and `/learning`).
-- `src/services/api.js`: The central Axios instance configuring base URLs, attaching JWT interceptors, and exporting modularized API wrappers (`projectAPI`, `coordinatorAPI`, etc.).
+    Frontend -->|REST API /api/*| Backend
+    Frontend -->|WebSocket| SocketIO
+    Backend --> Database
+```
 
 ---
 
-## 6. Key Backend Directories
+## 👥 Four User Roles & Their Dashboards
 
-- `controllers/`: Contains the core business logic (e.g. `coordinatorController` handles calculating complex SQL joins for the dashboard metrics).
-- `models/`: Abstraction layer directly interfacing with the `mysql2/promise` connection pool. Handles CRUD logic.
-- `routes/`: Express routers mapping REST endpoints to their respective controllers. Uses custom `authMiddleware` and `roleMiddleware` functions to shield sensitive endpoints.
-- `database/`: Contains initialization and migration `.sql` scripts (e.g., `migrate_v3.sql` which adds the `images` JSON column to enable step-by-step image arrays).
-- `uploads/`: The physical resting place for `multer` injected binary files, served statically via `express.static`.
+| Role | Dashboard | Key Capabilities |
+|------|-----------|-----------------|
+| **Admin** | [AdminDashboard.jsx](file:///c:/Users/kagit/Desktop/Project%20task/frontend/src/pages/AdminDashboard.jsx) | Full system control — user CRUD, batch management, analytics, system history, project management |
+| **Coordinator** | [CoordinatorDashboard.jsx](file:///c:/Users/kagit/Desktop/Project%20task/frontend/src/pages/coordinator/CoordinatorDashboard.jsx) | Sub-batch management, task creation/review, attendance, academic operations, student progress approval |
+| **Faculty** | [FacultyDashboard.jsx](file:///c:/Users/kagit/Desktop/Project%20task/frontend/src/pages/faculty/FacultyDashboard.jsx) | Student monitoring, mock interviews, academic guidance, performance tracking, mentoring sessions |
+| **Student** | [Dashboard.jsx](file:///c:/Users/kagit/Desktop/Project%20task/frontend/src/pages/Dashboard.jsx) | Project learning, task submissions, attendance view, performance, live classroom, mock interviews |
 
 ---
 
-## Note on "Project Liteness"
-During recent refactoring, several deprecated components and heavy pages (like `RoadmapPage`, `ProjectPage`, `LearningPage`, `EnhancedLearningPage`, and the `CodeEditor` dependency) were completely scrubbed from the repository. The source code is now strictly tailored to the visual Guided Learning flow, resulting in a cleaner, more maintainable, and lightweight codebase suitable for immediate integration.
+## 🗂️ Complete Feature Map
+
+### 1. Authentication & Authorization
+- **JWT-based auth** with token stored in `localStorage`
+- [authMiddleware.js](file:///c:/Users/kagit/Desktop/Project%20task/backend/middleware/authMiddleware.js) — Token verification (`protect`) + role authorization (`authorize`)
+- [roles.js](file:///c:/Users/kagit/Desktop/Project%20task/backend/middleware/roles.js) — Granular RBAC with batch/session/project access checks, rate limiting, ownership validation
+- [AuthContext.jsx](file:///c:/Users/kagit/Desktop/Project%20task/frontend/src/context/AuthContext.jsx) — React context for login/logout/user state
+- Auto-redirect on 401 responses
+
+### 2. Project-Based Learning System
+- **Projects** with difficulty levels (beginner/intermediate/advanced) and steps
+- **Two project types**: Simple (all steps unlocked) vs Main (sequential, coordinator-approved)
+- Step-by-step guided learning with code snippets and explanations
+- Step progress tracking: `not_started → in_progress → completed`
+- Coordinator approval workflow for main projects
+- File uploads via **Multer**
+
+### 3. Batch & Student Management
+- Batch creation with coordinator assignment
+- Sub-batch management for coordinators
+- Student enrollment with batch assignment
+- Bulk student creation
+- Performance score & attendance rate tracking per batch
+
+### 4. Task Management System
+- Coordinators create and assign tasks
+- Students submit task responses
+- Coordinator review with approve/reject workflow
+- Submission history tracking
+
+### 5. Attendance System
+- Session-based attendance with topic tracking
+- Mark attendance: `present / partial / absent`
+- Attendance history with date-range filtering
+- Student self-view of attendance summary
+- Batch-level attendance reports
+
+### 6. Live Classroom & Sessions
+- Session types: `class / mock_interview / mentoring / meeting`
+- Session scheduling with meeting links
+- Participant tracking (join/leave times, duration)
+- Session status workflow: `scheduled → live → ended`
+- Recording URL support
+
+### 7. Mock Interview System
+- Faculty-scheduled mock interviews
+- Multi-criteria evaluation (communication, technical, confidence, problem-solving)
+- Detailed feedback: strengths, weaknesses, recommendations
+- Score tracking and history
+
+### 8. Academic Operations
+- Class link management with bookmarks
+- Assessment creation and result recording
+- Academic overview with progress tracking
+- Academic guidance features for faculty
+
+### 9. Real-Time Messaging
+- [MessagingInterface.jsx](file:///c:/Users/kagit/Desktop/Project%20task/frontend/src/components/messaging/MessagingInterface.jsx) — Rich messaging UI (62KB component!)
+- Direct messages & batch announcements
+- Message pinning, emoji reactions
+- Unread count badges
+- Socket.io-powered real-time delivery
+
+### 10. Notification System
+- Multi-type: `class_reminder / deadline / interview / feedback / alert / general`
+- Priority levels: `low / medium / high / urgent`
+- Real-time push via Socket.io
+- [NotificationBell.jsx](file:///c:/Users/kagit/Desktop/Project%20task/frontend/src/components/notifications/NotificationBell.jsx) — Bell icon with live count
+- Manual notification sending (admin/coordinator)
+
+### 11. Analytics & Reporting
+- [AdminAnalytics.jsx](file:///c:/Users/kagit/Desktop/Project%20task/frontend/src/pages/admin/AdminAnalytics.jsx) — Charts using **Recharts**
+- Student performance metrics with risk-level indicators
+- Dashboard statistics for all roles
+- System activity history & audit logging
+
+---
+
+## 📁 Project Structure
+
+### Backend — 13 API Route Modules
+
+| Route Prefix | Route File | Controller | Purpose |
+|---|---|---|---|
+| `/api/auth` | [authRoutes.js](file:///c:/Users/kagit/Desktop/Project%20task/backend/routes/authRoutes.js) | [authController.js](file:///c:/Users/kagit/Desktop/Project%20task/backend/controllers/authController.js) | Login, Register, Get User |
+| `/api/projects` | [projectRoutes.js](file:///c:/Users/kagit/Desktop/Project%20task/backend/routes/projectRoutes.js) | [projectController.js](file:///c:/Users/kagit/Desktop/Project%20task/backend/controllers/projectController.js) | CRUD, steps, resume learning |
+| `/api/users` | [userRoutes.js](file:///c:/Users/kagit/Desktop/Project%20task/backend/routes/userRoutes.js) | [userController.js](file:///c:/Users/kagit/Desktop/Project%20task/backend/controllers/userController.js) | Profile, password, batch assignment |
+| `/api/admin` | [adminRoutes.js](file:///c:/Users/kagit/Desktop/Project%20task/backend/routes/adminRoutes.js) | [adminController.js](file:///c:/Users/kagit/Desktop/Project%20task/backend/controllers/adminController.js) | User CRUD, batch CRUD, history |
+| `/api/coordinator` | [coordinatorRoutes.js](file:///c:/Users/kagit/Desktop/Project%20task/backend/routes/coordinatorRoutes.js) | [coordinatorController.js](file:///c:/Users/kagit/Desktop/Project%20task/backend/controllers/coordinatorController.js) | Sub-batches, tasks, approvals |
+| `/api/faculty` | [facultyRoutes.js](file:///c:/Users/kagit/Desktop/Project%20task/backend/routes/facultyRoutes.js) | [facultyController.js](file:///c:/Users/kagit/Desktop/Project%20task/backend/controllers/facultyController.js) | Interviews, monitoring, mentoring |
+| `/api/student` | [studentRoutes.js](file:///c:/Users/kagit/Desktop/Project%20task/backend/routes/studentRoutes.js) | [studentController.js](file:///c:/Users/kagit/Desktop/Project%20task/backend/controllers/studentController.js) | Tasks, submissions |
+| `/api/progress` | [progressRoutes.js](file:///c:/Users/kagit/Desktop/Project%20task/backend/routes/progressRoutes.js) | [progressController.js](file:///c:/Users/kagit/Desktop/Project%20task/backend/controllers/progressController.js) | Step progress, stats |
+| `/api/academics` | [academicRoutes.js](file:///c:/Users/kagit/Desktop/Project%20task/backend/routes/academicRoutes.js) | [academicController.js](file:///c:/Users/kagit/Desktop/Project%20task/backend/controllers/academicController.js) | Class links, assessments, attendance |
+| `/api/platform` | [platformRoutes.js](file:///c:/Users/kagit/Desktop/Project%20task/backend/routes/platformRoutes.js) | [platformController.js](file:///c:/Users/kagit/Desktop/Project%20task/backend/controllers/platformController.js) | Sessions, interviews, performance |
+| `/api/attendance` | [attendanceRoutes.js](file:///c:/Users/kagit/Desktop/Project%20task/backend/routes/attendanceRoutes.js) | [attendanceController.js](file:///c:/Users/kagit/Desktop/Project%20task/backend/controllers/attendanceController.js) | Session attendance, history |
+| `/api/messages` | [messageRoutes.js](file:///c:/Users/kagit/Desktop/Project%20task/backend/routes/messageRoutes.js) | [messageController.js](file:///c:/Users/kagit/Desktop/Project%20task/backend/controllers/messageController.js) | DM, announcements, reactions |
+| `/api/notifications` | [notificationRoutes.js](file:///c:/Users/kagit/Desktop/Project%20task/backend/routes/notificationRoutes.js) | [notificationController.js](file:///c:/Users/kagit/Desktop/Project%20task/backend/controllers/notificationController.js) | CRUD, mark read, send manual |
+
+### Frontend — Page & Component Breakdown
+
+**Pages (36 total across 6 directories):**
+
+| Area | Pages | Count |
+|------|-------|-------|
+| **Admin** | AdminDashboard, Analytics, Batches, Coordinators, Faculties, Projects, Students, Users, SystemHistory, Sessions | 10 |
+| **Coordinator** | CoordinatorDashboard, AcademicOps, Attendance, Activity, SubBatches, Tasks, Submissions | 7 |
+| **Faculty** | FacultyDashboard, AcademicGuidance, Projects, Sessions, Performance, StudentMonitoring | 6 |
+| **Student** | Dashboard, ProjectLearning, GuidedLearning, MyProgress, Tasks, TaskSubmission, Attendance, AcademicProgress, ChangePassword | 9 |
+| **Platform** | LiveClassroom, MockInterview, StudentPerformance, ProjectManager, SessionManager, NotificationCenter | 6 |
+| **Shared** | Login, MessagingPage, StudentProfilePage | 3 |
+
+**Reusable Components:**
+- `common/` — Button, Card, ConfirmDialog, ProgressBar
+- `layout/` — AdminLayout, CoordinatorLayout, FacultyLayout, StudentLayout, Sidebar
+- `messaging/` — MessagingIcon, MessagingInterface
+- `notifications/` — NotificationBell
+- `learning/` — ResumeLearning
+- `forms/` — ProjectUploadForm
+
+---
+
+## 🗃️ Database Schema — 15+ Tables
+
+```mermaid
+erDiagram
+    Users ||--o{ StudentBatches : enrolls
+    Users ||--o{ Faculty : "has profile"
+    Users ||--o{ StudentProjects : assigned
+    Users ||--o{ LiveSessions : hosts
+    Users ||--o{ Notifications : receives
+    Users ||--o{ ActivityLogs : creates
+
+    Batches ||--o{ StudentBatches : contains
+    Batches ||--o{ LiveSessions : "has sessions"
+
+    Projects ||--o{ ProjectSteps : "has steps"
+    Projects ||--o{ StudentProjects : "assigned to"
+
+    StudentProjects ||--o{ StepProgress : tracks
+
+    LiveSessions ||--o{ SessionParticipants : "has participants"
+    LiveSessions ||--o{ InterviewEvaluations : "evaluated in"
+```
+
+**Key Tables**: Users, Faculty, Batches, StudentBatches, Projects, ProjectSteps, StudentProjects, StepProgress, LiveSessions, SessionParticipants, InterviewEvaluations, StudentPerformance, Notifications, ActivityLogs, SystemSettings
+
+---
+
+## ⚙️ Tech Stack Summary
+
+| Layer | Technology | Version |
+|-------|-----------|---------|
+| **Frontend Framework** | React | 18.2 |
+| **Build Tool** | Vite | 4.1 |
+| **Routing** | React Router DOM | 6.8 |
+| **HTTP Client** | Axios | 1.3 |
+| **Charts** | Recharts | 3.8 |
+| **Icons** | Lucide React | 0.577 |
+| **Real-time (client)** | socket.io-client | 4.8 |
+| **Excel Export** | xlsx | 0.18 |
+| **Backend Runtime** | Node.js | 16+ |
+| **Web Framework** | Express.js | 4.18 |
+| **Database Driver** | mysql2 | 3.22 |
+| **Auth** | jsonwebtoken + bcryptjs | 9.0 / 2.4 |
+| **File Upload** | Multer | 2.1 |
+| **Real-time (server)** | Socket.io | 4.8 |
+| **Database** | MySQL | — |
+| **Dev Tool** | Nodemon | 3.0 |
+| **Deployment Config** | Vercel (frontend) | — |
+
+---
+
+## 🔄 Core Workflow (from Flowchart)
+
+![Project Flowchart](file:///c:/Users/kagit/Desktop/Project%20task/Flowchart.png)
+
+**Student Flow:**
+1. Login → Student Dashboard → View Assigned Projects
+2. **Simple projects**: All steps unlocked → Read & build → Mark done → Complete
+3. **Main projects**: View current step only → Build → Mark as completed (status = Pending) → Wait for coordinator review → Approved? → Unlock next step → Repeat → Project completed
+
+**Coordinator Flow:**
+1. Login → Dashboard → View students → Select student → View step progress
+2. Pending step? → Review details → Approve (unlock next step) or Reject with feedback (student reworks)
+
+**Admin Flow:**
+1. Login → Admin Dashboard
+2. **User Management**: Create students, coordinators, faculties
+3. **Project Management**: Create projects, add steps (title, explanation, code snippet, order)
+
+---
+
+## 📊 Key Metrics
+
+| Metric | Count |
+|--------|-------|
+| Backend Route Modules | 13 |
+| Backend Controllers | 14 |
+| Backend Models | 12 |
+| Frontend Pages | ~36 |
+| Frontend Components | ~15 |
+| API Service Modules | 4 (api.js, platformAPI.js, facultyAPI.js, socketService.js) |
+| Database Migration Files | 25 |
+| Total Database Tables | 15+ |
+| User Roles | 4 (admin, coordinator, faculty, student) |
+
+---
+
+## 🚀 Running Status
+
+Both servers are currently running:
+- **Frontend**: `npm run dev` on port **3000** (running 3h+)
+- **Backend**: `npm run dev` on port **5000** (running 3h+)
+- Vite proxy forwards `/api/*` requests from frontend to backend
+
+---
+
+> [!NOTE]
+> This is a **mature, feature-rich LMS** with significant complexity. The codebase has evolved through **9+ database migration versions**, indicating active iterative development. The platform goes well beyond basic project learning — it's a complete **Student Execution & Mentorship Platform** with live classrooms, mock interviews, attendance tracking, real-time messaging, and multi-role analytics.

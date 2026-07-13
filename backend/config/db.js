@@ -8,8 +8,11 @@ const dbConfig = {
   password: process.env.DB_PASSWORD,
   database: process.env.DB_NAME,
   waitForConnections: true,
-  connectionLimit: 10,
+  connectionLimit: 15, // Increased from 10
   queueLimit: 0,
+  enableKeepAlive: true,
+  keepAliveInitialDelay: 10000,
+  connectTimeout: 20000,
   ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: true } : undefined
 };
 

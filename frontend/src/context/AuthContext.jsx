@@ -18,12 +18,15 @@ export const AuthProvider = ({ children }) => {
   useEffect(() => {
     const token = localStorage.getItem('token')
     if (token) {
+      // Try to get user data, but don't fail if API is down
       authAPI.getUser()
         .then(response => {
           setUser(response.data.user)
         })
-        .catch(() => {
-          localStorage.removeItem('token')
+        .catch((error) => {
+          console.warn('Failed to get user data:', error)
+          // Don't remove token on API failure, just set user to null
+          setUser(null)
         })
         .finally(() => {
           setLoading(false)
@@ -37,32 +40,14 @@ export const AuthProvider = ({ children }) => {
     try {
       const response = await authAPI.login(email, password)
       const { token, user } = response.data
-      
       localStorage.setItem('token', token)
       setUser(user)
-      
-      return { success: true }
+      return { success: true, user }
     } catch (error) {
+      console.error('Login failed:', error)
       return { 
         success: false, 
-        error: error.response?.data?.message || 'Login failed' 
-      }
-    }
-  }
-
-  const register = async (name, email, password) => {
-    try {
-      const response = await authAPI.register(name, email, password)
-      const { token, user } = response.data
-      
-      localStorage.setItem('token', token)
-      setUser(user)
-      
-      return { success: true }
-    } catch (error) {
-      return { 
-        success: false, 
-        error: error.response?.data?.message || 'Registration failed' 
+        error: error.response?.data?.message || 'Invalid email or password' 
       }
     }
   }
@@ -74,10 +59,9 @@ export const AuthProvider = ({ children }) => {
 
   const value = {
     user,
+    loading,
     login,
-    register,
-    logout,
-    loading
+    logout
   }
 
   return (
@@ -86,3 +70,5 @@ export const AuthProvider = ({ children }) => {
     </AuthContext.Provider>
   )
 }
+
+export default AuthProvider

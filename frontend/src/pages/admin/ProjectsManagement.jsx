@@ -57,7 +57,7 @@ const ProjectsManagement = () => {
         <Card>
           <div className="section-header">
             <h2>All Projects</h2>
-            <Link to="/admin">
+            <Link to={user?.role === 'admin' ? "/admin" : "/faculty"}>
               <Button variant="primary">
                 Upload New Project
               </Button>
@@ -68,7 +68,7 @@ const ProjectsManagement = () => {
             {projects.length === 0 ? (
               <div className="empty-state">
                 <p>No projects available. Upload your first project!</p>
-                <Link to="/admin">
+                <Link to={user?.role === 'admin' ? "/admin" : "/faculty"}>
                   <Button variant="primary">
                     Upload Project
                   </Button>

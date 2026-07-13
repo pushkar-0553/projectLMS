@@ -18,7 +18,9 @@ const authController = {
 
   async register(req, res) {
     try {
-      const { name, email, password, role = 'student' } = req.body;
+      const { name, email, password } = req.body;
+      // Issue #2 fix: Force role to 'student' — ignore any role from request body
+      const role = 'student';
 
       if (!name || !email || !password) {
         return res.status(400).json({ message: 'All fields are required' });
@@ -32,10 +34,11 @@ const authController = {
       // Hash password using bcrypt
       const hashedPassword = await bcrypt.hash(password, 10);
       
-      const userId = await User.create(name, email, hashedPassword, role);
+      // Issue #4 fix: Use object destructuring to match User.create() signature
+      const userId = await User.create({ name, email, password: hashedPassword, role });
 
       const user = await User.findById(userId);
-      const token = generateToken(userId);
+      const token = generateToken(userId, role);
 
       res.status(201).json({
         message: 'User registered successfully',
@@ -67,12 +70,15 @@ const authController = {
         return res.status(401).json({ message: 'Invalid credentials' });
       }
 
-      const token = generateToken(user.id);
+      const token = generateToken(user.id, user.role);
+
+      // Issue #1 fix: Strip password from response
+      const { password: _pwd, ...safeUser } = user;
 
       res.json({
         message: 'Login successful',
         token,
-        user
+        user: safeUser
       });
     } catch (error) {
       console.error('Login error:', error);

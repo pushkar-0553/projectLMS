@@ -1,18 +1,24 @@
 import React, { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import { projectAPI } from '../services/api'
+import { projectAPI, studentAPI } from '../services/api'
 import ResumeLearning from '../components/learning/ResumeLearning'
 import Button from '../components/common/Button'
-import { BookOpen, Clock, ChevronRight, Layout, Activity, Award, MessageSquare, Lightbulb, Users } from 'lucide-react'
+import { 
+  BookOpen, Clock, ChevronRight, Layout, Activity, Award, 
+  MessageSquare, Lightbulb, Users, CheckCircle, Calendar, XCircle, AlertCircle 
+} from 'lucide-react'
 
 const Dashboard = () => {
   const { user } = useAuth()
   const [stats, setStats] = useState(null)
+  const [activities, setActivities] = useState([])
   const [loading, setLoading] = useState(true)
+  const [activitiesLoading, setActivitiesLoading] = useState(true)
 
   useEffect(() => {
     fetchDashboardStats()
+    fetchRecentActivity()
   }, [])
 
   const fetchDashboardStats = async () => {
@@ -24,6 +30,108 @@ const Dashboard = () => {
     } finally {
       setLoading(false)
     }
+  }
+
+  const fetchRecentActivity = async () => {
+    try {
+      const response = await studentAPI.getRecentActivity()
+      setActivities(response.data)
+    } catch (error) {
+      console.error('Failed to fetch recent activity:', error)
+    } finally {
+      setActivitiesLoading(false)
+    }
+  }
+
+  const renderRecentActivity = () => {
+    if (activitiesLoading) {
+      return (
+        <div style={{ display: 'flex', justifyContent: 'center', padding: '2rem' }}>
+          <div className="spinner" style={{ width: '24px', height: '24px' }}></div>
+        </div>
+      )
+    }
+
+    if (activities.length === 0) {
+      return (
+        <div style={{ padding: '2rem', textAlign: 'center', color: '#64748b', fontSize: '13px' }}>
+          No recent activity found. Submit tasks or steps to see them here!
+        </div>
+      )
+    }
+
+    const getIcon = (type, status) => {
+      switch (type) {
+        case 'task_submission':
+          return <MessageSquare size={16} style={{ color: '#4f46e5' }} />
+        case 'step_progress':
+          return status === 'approved' 
+            ? <CheckCircle size={16} style={{ color: '#10b981' }} /> 
+            : status === 'rejected'
+              ? <XCircle size={16} style={{ color: '#ef4444' }} />
+              : <Clock size={16} style={{ color: '#f59e0b' }} />
+        case 'simple_step':
+          return <CheckCircle size={16} style={{ color: '#10b981' }} />
+        case 'mock_interview':
+          return <Calendar size={16} style={{ color: '#6366f1' }} />
+        case 'mentoring':
+          return <Users size={16} style={{ color: '#14b8a6' }} />
+        default:
+          return <Activity size={16} style={{ color: '#64748b' }} />
+      }
+    }
+
+    const getBadgeStyle = (status) => {
+      switch (status) {
+        case 'approved':
+        case 'completed':
+          return { bg: '#dcfce7', text: '#15803d' }
+        case 'rejected':
+          return { bg: '#fee2e2', text: '#991b1b' }
+        case 'pending':
+        case 'submitted':
+          return { bg: '#fef9c3', text: '#92400e' }
+        default:
+          return { bg: '#f1f5f9', text: '#475569' }
+      }
+    }
+
+    return (
+      <div className="activity-timeline">
+        {activities.map((act) => {
+          const badge = getBadgeStyle(act.status)
+          const formattedDate = new Date(act.date).toLocaleDateString('en-IN', {
+            day: 'numeric',
+            month: 'short',
+            hour: '2-digit',
+            minute: '2-digit'
+          })
+
+          return (
+            <div key={`${act.type}-${act.id}`} className="activity-timeline-item">
+              <div className="activity-timeline-line"></div>
+              <div className="activity-timeline-badge">
+                {getIcon(act.type, act.status)}
+              </div>
+              <div className="activity-timeline-content">
+                <div className="activity-meta">
+                  <span className="activity-title-text">{act.title}</span>
+                  <span className="activity-date">{formattedDate}</span>
+                </div>
+                <div className="activity-footer-pills">
+                  <span 
+                    className="activity-status-badge"
+                    style={{ backgroundColor: badge.bg, color: badge.text }}
+                  >
+                    {act.status}
+                  </span>
+                </div>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    )
   }
 
   if (loading) {
@@ -49,14 +157,14 @@ const Dashboard = () => {
               <div className="header-stat-glass">
                 <Activity className="icon-sm text-primary" />
                 <div>
-                  <span className="stat-value">{stats?.totalProjects || 0}</span>
+                  <span className="stat-value">{stats?.overallProgress?.length || stats?.overallProgress?.totalProjects || 0}</span>
                   <span className="stat-label">Total Projects</span>
                 </div>
               </div>
               <div className="header-stat-glass">
                 <Award className="icon-sm text-success" />
                 <div>
-                  <span className="stat-value">{stats?.completedCount || 0}</span>
+                  <span className="stat-value">{stats?.completedProjects || 0}</span>
                   <span className="stat-label">Completed</span>
                 </div>
               </div>
@@ -72,11 +180,21 @@ const Dashboard = () => {
             {/* Resume Section */}
             <div className="section-header-modern">
               <h2 className="section-title-modern">
-                <Clock className="icon-md text-primary" /> Recent Activity
+                <Clock className="icon-md text-primary" /> Continue Learning
               </h2>
             </div>
             <div className="resume-container-modern shadow-soft mb-8">
               <ResumeLearning />
+            </div>
+
+            {/* Recent Activity Section */}
+            <div className="section-header-modern">
+              <h2 className="section-title-modern">
+                <Activity className="icon-md text-primary" /> Recent Activity
+              </h2>
+            </div>
+            <div className="card shadow-soft mb-8" style={{ background: '#fff', borderRadius: '1.25rem', border: '1px solid #f1f5f9', padding: '16px' }}>
+              {renderRecentActivity()}
             </div>
 
             {/* Active Project Highlight */}
@@ -96,7 +214,7 @@ const Dashboard = () => {
                     <span className="text-sm text-muted">Trainer: {stats.activeProject.trainer || 'TBD'}</span>
                   </div>
                 </div>
-                
+
                 <div className="active-project-body mt-4">
                   <div className="flex-between mb-2">
                     <span className="text-sm font-bold">
@@ -107,8 +225,8 @@ const Dashboard = () => {
                     </span>
                   </div>
                   <div className="progress-bar">
-                    <div 
-                      className="progress-fill" 
+                    <div
+                      className="progress-fill"
                       style={{ width: `${(stats.activeProject.step_completed / stats.activeProject.total_steps) * 100}%` }}
                     ></div>
                   </div>
@@ -136,7 +254,9 @@ const Dashboard = () => {
                 </div>
                 <h3>Self Introduction</h3>
                 <p>Master the art of presenting yourself professionally.</p>
-                <Button variant="secondary" size="small">Get Started</Button>
+                <Link to="/student/interview-guidance?tab=intro">
+                  <Button variant="secondary" size="small">Get Started</Button>
+                </Link>
               </div>
               <div className="guidance-card-modern hover-lift">
                 <div className="guidance-icon-box bg-emerald-light">
@@ -144,7 +264,9 @@ const Dashboard = () => {
                 </div>
                 <h3>Common HR Questions</h3>
                 <p>Prepare for the most frequent interview challenges.</p>
-                <Button variant="secondary" size="small">Get Started</Button>
+                <Link to="/student/interview-guidance?tab=questions">
+                  <Button variant="secondary" size="small">Get Started</Button>
+                </Link>
               </div>
               <div className="guidance-card-modern hover-lift">
                 <div className="guidance-icon-box bg-amber-light">
@@ -152,10 +274,12 @@ const Dashboard = () => {
                 </div>
                 <h3>Tips & Tricks</h3>
                 <p>Essential strategies for interview success.</p>
-                <Button variant="secondary" size="small">Get Started</Button>
+                <Link to="/student/interview-guidance?tab=tips">
+                  <Button variant="secondary" size="small">Get Started</Button>
+                </Link>
               </div>
             </div>
-            
+
             <div className="flex-center mt-10">
               <Link to="/project-learning">
                 <Button variant="primary" className="btn-lg">
@@ -211,6 +335,89 @@ const Dashboard = () => {
       </main>
 
       <style>{`
+        .activity-timeline {
+          position: relative;
+          padding: 1rem 0.5rem;
+          display: flex;
+          flex-direction: column;
+          gap: 1.5rem;
+        }
+
+        .activity-timeline-item {
+          display: flex;
+          position: relative;
+          gap: 1rem;
+        }
+
+        .activity-timeline-line {
+          position: absolute;
+          left: 17px;
+          top: 36px;
+          bottom: -28px;
+          width: 2px;
+          background: #e2e8f0;
+          z-index: 0;
+        }
+
+        .activity-timeline-item:last-child .activity-timeline-line {
+          display: none;
+        }
+
+        .activity-timeline-badge {
+          width: 36px;
+          height: 36px;
+          border-radius: 50%;
+          background: #f8fafc;
+          border: 2px solid #e2e8f0;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 1;
+          flex-shrink: 0;
+          box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+        }
+
+        .activity-timeline-content {
+          flex-grow: 1;
+          background: #ffffff;
+          border: 1px solid #f1f5f9;
+          border-radius: 1rem;
+          padding: 0.875rem 1.125rem;
+          box-shadow: 0 4px 6px -1px rgba(0,0,0,0.02);
+          display: flex;
+          flex-direction: column;
+          gap: 0.35rem;
+        }
+
+        .activity-meta {
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-start;
+          flex-wrap: wrap;
+          gap: 0.5rem;
+        }
+
+        .activity-title-text {
+          font-size: 0.9rem;
+          font-weight: 600;
+          color: #1e293b;
+        }
+
+        .activity-date {
+          font-size: 0.7rem;
+          color: #94a3b8;
+        }
+
+        .activity-status-badge {
+          display: inline-block;
+          font-size: 0.65rem;
+          font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+          padding: 1px 6px;
+          border-radius: 8px;
+        }
+
         .student-dashboard {
           background-color: #f8fafc;
           min-height: 100vh;

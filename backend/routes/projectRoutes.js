@@ -6,7 +6,7 @@ const fs = require('fs');
 const projectController = require('../controllers/projectController');
 const progressController = require('../controllers/progressController');
 const { authenticateToken } = require('../middleware/authMiddleware');
-const { isAdmin } = require('../middleware/roleMiddleware');
+const { isAdmin, isAdminOrFaculty } = require('../middleware/roleMiddleware');
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({
@@ -57,12 +57,12 @@ router.get('/level/:level', projectController.getProjectsByLevel);
 router.get('/:id', projectController.getProjectById);
 router.get('/:projectId/steps', authenticateToken, projectController.getStepsByProjectId);
 
-// Admin-only routes
-router.post('/', authenticateToken, isAdmin, upload.any(), projectController.createProject);
-router.put('/:id', authenticateToken, isAdmin, upload.any(), projectController.updateProject);
-router.delete('/:id', authenticateToken, isAdmin, projectController.deleteProject);
-router.post('/:projectId/steps', authenticateToken, isAdmin, upload.any(), projectController.createStep);
-router.put('/steps/:stepId', authenticateToken, isAdmin, upload.any(), projectController.updateStep);
-router.delete('/steps/:stepId', authenticateToken, isAdmin, projectController.deleteStep);
+// Admin and Faculty routes
+router.post('/', authenticateToken, isAdminOrFaculty, upload.any(), projectController.createProject);
+router.put('/:id', authenticateToken, isAdminOrFaculty, upload.any(), projectController.updateProject);
+router.delete('/:id', authenticateToken, isAdminOrFaculty, projectController.deleteProject);
+router.post('/:projectId/steps', authenticateToken, isAdminOrFaculty, upload.any(), projectController.createStep);
+router.put('/steps/:stepId', authenticateToken, isAdminOrFaculty, upload.any(), projectController.updateStep);
+router.delete('/steps/:stepId', authenticateToken, isAdminOrFaculty, projectController.deleteStep);
 
 module.exports = router;
