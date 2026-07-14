@@ -4,7 +4,7 @@ import { useAuth } from '../../context/AuthContext';
 import { 
   Users, Calendar, Video, Award, Settings, LogOut, Bell, 
   BookOpen, UserCheck, BarChart3, GraduationCap, Clock, ChevronRight,
-  Target, MessageSquare
+  Target, MessageSquare, FileText
 } from 'lucide-react';
 import NotificationBell from '../notifications/NotificationBell';
 import MessagingIcon from '../messaging/MessagingIcon';
@@ -22,6 +22,7 @@ const FacultyLayout = () => {
   const menuItems = [
     { path: '/faculty', label: 'Overview', icon: BarChart3 },
     { path: '/faculty/student-monitoring', label: 'Student Monitoring', icon: Users },
+    { path: '/resumes', label: 'Resume Hub', icon: FileText },
     { path: '/faculty/projects', label: 'Projects Management', icon: Target },
     { path: '/faculty/guidance', label: 'Academic Guidance', icon: BookOpen },
     { path: '/faculty/interviews', label: 'Mock Interviews', icon: Video },

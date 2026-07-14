@@ -1,7 +1,7 @@
 import React from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
-import { BarChart3, Calendar, ClipboardList, GraduationCap, History, LayoutList, LogOut, Users, MessageSquare } from 'lucide-react'
+import { BarChart3, Calendar, ClipboardList, GraduationCap, History, LayoutList, LogOut, Users, MessageSquare, FileText } from 'lucide-react'
 import NotificationBell from '../notifications/NotificationBell';
 import MessagingIcon from '../messaging/MessagingIcon';
 
@@ -15,6 +15,7 @@ const CoordinatorLayout = ({ children }) => {
     { path: '/coordinator/tasks', icon: ClipboardList, label: 'Manage Tasks' },
     { path: '/coordinator/academics', icon: GraduationCap, label: 'Academics' },
     { path: '/coordinator/attendance', icon: Calendar, label: 'Attendance' },
+    { path: '/resumes', icon: FileText, label: 'Resume Hub' },
     ...(user?.role === 'faculty' ? [
       { path: '/coordinator/guidance', icon: BookOpen, label: 'Guidance' },
       { path: '/coordinator/interviews', icon: Video, label: 'Mock Interviews' }

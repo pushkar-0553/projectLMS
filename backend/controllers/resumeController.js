@@ -1,0 +1,396 @@
+const Resume = require('../models/Resume');
+const cloudinaryService = require('../services/cloudinaryService');
+
+const resumeController = {
+  /**
+   * POST /api/resumes/upload
+   * Handles resume file upload (PDF format, max 10MB) to Cloudinary.
+   */
+  async uploadResume(req, res) {
+    try {
+      const studentId = req.body.student_id || req.user?.id;
+      const { resume_title } = req.body;
+
+      if (!studentId) {
+        return res.status(400).json({ message: 'student_id is required' });
+      }
+
+      if (!req.file) {
+        return res.status(400).json({ message: 'No resume PDF file uploaded' });
+      }
+
+      // Perform Cloudinary upload
+      const uploadResult = await cloudinaryService.uploadResume(req.file);
+
+      // Create db record
+      const result = await Resume.create({
+        studentId,
+        resumeTitle: resume_title || 'Resume',
+        resumeFileName: uploadResult.original_filename,
+        cloudinaryPublicId: uploadResult.public_id,
+        cloudinaryUrl: uploadResult.secure_url
+      });
+
+      res.status(201).json({
+        message: 'Resume uploaded successfully',
+        resume: {
+          id: result.id,
+          student_id: studentId,
+          resume_title: resume_title || 'Resume',
+          file_name: uploadResult.original_filename,
+          cloudinary_public_id: uploadResult.public_id,
+          cloudinary_url: uploadResult.secure_url,
+          version: result.version,
+          is_latest: true
+        }
+      });
+    } catch (error) {
+      console.error('Upload resume error:', error);
+      res.status(500).json({ message: 'Server error' });
+    }
+  },
+
+  /**
+   * DELETE /api/resumes/:id
+   * Deletes a resume from Cloudinary and database metadata.
+   */
+  async deleteResume(req, res) {
+    try {
+      const { id } = req.params;
+
+      const resume = await Resume.getById(id);
+      if (!resume) {
+        return res.status(404).json({ message: 'Resume not found' });
+      }
+
+      // Delete from Cloudinary
+      if (resume.cloudinary_public_id) {
+        await cloudinaryService.deleteResume(resume.cloudinary_public_id);
+      }
+
+      // Delete from DB
+      await Resume.delete(id);
+
+      res.json({ message: 'Resume deleted successfully' });
+    } catch (error) {
+      console.error('Delete resume error:', error);
+      res.status(500).json({ message: 'Server error' });
+    }
+  },
+
+  /**
+   * PUT /api/resumes/:id
+   * Replaces a resume (deletes old Cloudinary file, uploads new PDF, keeps version history).
+   */
+  async replaceResume(req, res) {
+    try {
+      const { id } = req.params;
+      const { resume_title } = req.body;
+
+      if (!req.file) {
+        return res.status(400).json({ message: 'No resume PDF file uploaded' });
+      }
+
+      const oldResume = await Resume.getById(id);
+      if (!oldResume) {
+        return res.status(404).json({ message: 'Resume not found' });
+      }
+
+      // Delete old file from Cloudinary
+      if (oldResume.cloudinary_public_id) {
+        await cloudinaryService.deleteResume(oldResume.cloudinary_public_id);
+      }
+
+      // Upload new file to Cloudinary
+      const uploadResult = await cloudinaryService.uploadResume(req.file);
+
+      // Save as a new version in the database
+      const result = await Resume.create({
+        studentId: oldResume.student_id,
+        resumeTitle: resume_title || oldResume.resume_title || 'Resume',
+        resumeFileName: uploadResult.original_filename,
+        cloudinaryPublicId: uploadResult.public_id,
+        cloudinaryUrl: uploadResult.secure_url
+      });
+
+      res.json({
+        message: 'Resume replaced successfully',
+        resume: {
+          id: result.id,
+          student_id: oldResume.student_id,
+          resume_title: resume_title || oldResume.resume_title || 'Resume',
+          file_name: uploadResult.original_filename,
+          cloudinary_public_id: uploadResult.public_id,
+          cloudinary_url: uploadResult.secure_url,
+          version: result.version,
+          is_latest: true
+        }
+      });
+    } catch (error) {
+      console.error('Replace resume error:', error);
+      res.status(500).json({ message: 'Server error' });
+    }
+  },
+
+  /**
+   * GET /api/resumes/student/:id
+   * Get latest resume for a student.
+   */
+  async getLatestResume(req, res) {
+    try {
+      const { id } = req.params;
+      const resume = await Resume.getLatestByStudent(id);
+      
+      if (!resume) {
+        return res.status(404).json({ message: 'No resume found for this student' });
+      }
+
+      res.json(resume);
+    } catch (error) {
+      console.error('Get latest resume error:', error);
+      res.status(500).json({ message: 'Server error' });
+    }
+  },
+
+  /**
+   * GET /api/resumes/history/:studentId
+   * Get full upload history for a student.
+   */
+  async getHistory(req, res) {
+    try {
+      const { studentId } = req.params;
+      const history = await Resume.getHistoryByStudent(studentId);
+      res.json(history);
+    } catch (error) {
+      console.error('Get history error:', error);
+      res.status(500).json({ message: 'Server error' });
+    }
+  },
+
+  /**
+   * GET /api/resumes
+   * Get all students with their latest resume info, notes, and search/filter.
+   */
+  async getAllResumes(req, res) {
+    try {
+      const students = await Resume.getAllStudentsWithResumeStatus();
+      
+      // Fetch notes for all students to avoid multiple db calls or do it in-memory
+      const studentsWithNotes = await Promise.all(
+        students.map(async (student) => {
+          const notes = await Resume.getNotes(student.id);
+          return {
+            ...student,
+            notes
+          };
+        })
+      );
+
+      res.json(studentsWithNotes);
+    } catch (error) {
+      console.error('Get all resumes error:', error);
+      res.status(500).json({ message: 'Server error' });
+    }
+  },
+
+  /**
+   * GET /api/resumes/search
+   * Search student resumes by name, email, or mobile.
+   */
+  async searchResumes(req, res) {
+    try {
+      const { query } = req.query;
+      const students = await Resume.getAllStudentsWithResumeStatus();
+      
+      let filtered = students;
+      if (query) {
+        const cleanQuery = query.toLowerCase();
+        filtered = students.filter(
+          s =>
+            (s.name && s.name.toLowerCase().includes(cleanQuery)) ||
+            (s.email && s.email.toLowerCase().includes(cleanQuery)) ||
+            (s.mobile && s.mobile.toLowerCase().includes(cleanQuery))
+        );
+      }
+
+      const results = await Promise.all(
+        filtered.map(async (student) => {
+          const notes = await Resume.getNotes(student.id);
+          return { ...student, notes };
+        })
+      );
+
+      res.json(results);
+    } catch (error) {
+      console.error('Search resumes error:', error);
+      res.status(500).json({ message: 'Server error' });
+    }
+  },
+
+  /**
+   * GET /api/resumes/filter
+   * Filter student resumes by domain, batch, status, or date updated.
+   */
+  async filterResumes(req, res) {
+    try {
+      const { domain, batch, status, date } = req.query;
+      let students = await Resume.getAllStudentsWithResumeStatus();
+
+      // 1. Filter by Domain
+      if (domain) {
+        students = students.filter(s => s.domain === domain);
+      }
+
+      // 2. Filter by Batch
+      if (batch) {
+        students = students.filter(s => s.batch === batch || s.batch_name === batch);
+      }
+
+      // 3. Filter by Resume Status
+      if (status) {
+        if (status === 'has_resume') {
+          students = students.filter(s => s.has_resume === 1);
+        } else if (status === 'missing') {
+          students = students.filter(s => s.has_resume === 0);
+        }
+      }
+
+      // 4. Filter by Date Updated
+      if (date && date !== 'all') {
+        const now = new Date();
+        const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const yesterday = new Date(startOfDay.getTime() - 24 * 60 * 60 * 1000);
+
+        students = students.filter(s => {
+          if (!s.resume_updated_at) return false;
+          const updatedTime = new Date(s.resume_updated_at);
+
+          if (date === 'today') {
+            return updatedTime >= startOfDay;
+          } else if (date === 'yesterday') {
+            return updatedTime >= yesterday && updatedTime < startOfDay;
+          } else if (date === 'days_ago') {
+            // Updated within the last 7 days but not today/yesterday
+            const sevenDaysAgo = new Date(startOfDay.getTime() - 7 * 24 * 60 * 60 * 1000);
+            return updatedTime >= sevenDaysAgo && updatedTime < yesterday;
+          }
+          return true;
+        });
+      }
+
+      const results = await Promise.all(
+        students.map(async (student) => {
+          const notes = await Resume.getNotes(student.id);
+          return { ...student, notes };
+        })
+      );
+
+      res.json(results);
+    } catch (error) {
+      console.error('Filter resumes error:', error);
+      res.status(500).json({ message: 'Server error' });
+    }
+  },
+
+  /**
+   * POST /api/resumes/notes
+   * Add a private notes entry for a student.
+   */
+  async addNote(req, res) {
+    try {
+      const { student_id, note } = req.body;
+      const createdBy = req.user?.id || req.body.created_by;
+
+      if (!student_id || !note) {
+        return res.status(400).json({ message: 'student_id and note text are required' });
+      }
+
+      const noteId = await Resume.addNote({
+        studentId: student_id,
+        note,
+        createdBy
+      });
+
+      res.status(201).json({
+        message: 'Note added successfully',
+        note: {
+          id: noteId,
+          student_id,
+          note,
+          created_by: createdBy,
+          created_at: new Date()
+        }
+      });
+    } catch (error) {
+      console.error('Add note error:', error);
+      res.status(500).json({ message: 'Server error' });
+    }
+  },
+
+  /**
+   * GET /api/resumes/notes/:studentId
+   * Get all private notes for a student.
+   */
+  async getNotes(req, res) {
+    try {
+      const { studentId } = req.params;
+      const notes = await Resume.getNotes(studentId);
+      res.json(notes);
+    } catch (error) {
+      console.error('Get notes error:', error);
+      res.status(500).json({ message: 'Server error' });
+    }
+  },
+
+  /**
+   * DELETE /api/resumes/notes/:id
+   * Delete a note.
+   */
+  async deleteNote(req, res) {
+    try {
+      const { id } = req.params;
+      const deleted = await Resume.deleteNote(id);
+      
+      if (!deleted) {
+        return res.status(404).json({ message: 'Note not found' });
+      }
+
+      res.json({ message: 'Note deleted successfully' });
+    } catch (error) {
+      console.error('Delete note error:', error);
+      res.status(500).json({ message: 'Server error' });
+    }
+  },
+
+  /**
+   * PUT /api/resumes/placement/:studentId
+   * Update student placement properties (domain, college, passout_year, location, skills, links).
+   */
+  async updatePlacementInfo(req, res) {
+    try {
+      const { studentId } = req.params;
+      const { domain, college, passout_year, current_location, skills, github, linkedin } = req.body;
+
+      const updated = await Resume.updatePlacementInfo(studentId, {
+        domain,
+        college,
+        passout_year,
+        current_location,
+        skills,
+        github,
+        linkedin
+      });
+
+      if (!updated) {
+        return res.status(404).json({ message: 'Student not found or placement info unchanged' });
+      }
+
+      res.json({ message: 'Student placement details updated successfully' });
+    } catch (error) {
+      console.error('Update placement info error:', error);
+      res.status(500).json({ message: 'Server error' });
+    }
+  }
+};
+
+module.exports = resumeController;

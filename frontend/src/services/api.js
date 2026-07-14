@@ -210,4 +210,30 @@ export const facultyAPI = {
   getBatchNotes: (batchId) => api.get(`/faculty/batch/${batchId}/notes`),
 };
 
+export const resumeAPI = {
+  uploadResume: (data) => api.post('/resumes/upload', data, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  }),
+  getLatestResume: (studentId) => api.get(`/resumes/student/${studentId}`),
+  getHistory: (studentId) => api.get(`/resumes/history/${studentId}`),
+  getAllResumes: () => api.get('/resumes'),
+  searchResumes: (query) => api.get('/resumes/search', { params: { query } }),
+  filterResumes: (filters) => api.get('/resumes/filter', { params: filters }),
+  updatePlacementInfo: (studentId, data) => api.put(`/resumes/placement/${studentId}`, data),
+  
+  // Notes
+  addNote: (data) => api.post('/resumes/notes', data),
+  getNotes: (studentId) => api.get(`/resumes/notes/${studentId}`),
+  deleteNote: (id) => api.delete(`/resumes/notes/${id}`),
+
+  // Collections
+  createCollection: (data) => api.post('/resume-collections', data),
+  getAllCollections: () => api.get('/resume-collections'),
+  getCollectionDetail: (id) => api.get(`/resume-collections/${id}`),
+  deleteCollection: (id) => api.delete(`/resume-collections/${id}`),
+
+  // Public
+  getPublicCollection: (token) => api.get(`/public/resumes/${token}`)
+};
+
 export default api;

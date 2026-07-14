@@ -1,7 +1,7 @@
 import React from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
-import { BarChart3, BookOpen, GraduationCap, History, Layers, LogOut, UserCog, Users, UserCheck, MessageSquare } from 'lucide-react'
+import { BarChart3, BookOpen, GraduationCap, History, Layers, LogOut, UserCog, Users, UserCheck, MessageSquare, FileText } from 'lucide-react'
 import NotificationBell from '../notifications/NotificationBell';
 import MessagingIcon from '../messaging/MessagingIcon';
 
@@ -16,6 +16,7 @@ const AdminLayout = ({ children }) => {
     { path: '/admin/coordinators', icon: GraduationCap, label: 'Coordinators' },
     { path: '/admin/faculties', icon: UserCheck, label: 'Faculty' },
     { path: '/admin/batches', icon: Layers, label: 'Batches' },
+    { path: '/resumes', icon: FileText, label: 'Resume Hub' },
     { path: '/admin/users', icon: UserCog, label: 'Users' },
     { path: '/admin/history', icon: History, label: 'System History' }
   ]

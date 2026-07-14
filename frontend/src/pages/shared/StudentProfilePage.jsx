@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
-import { userAPI } from '../../services/api'
+import { userAPI, resumeAPI } from '../../services/api'
+import ResumeUpload from '../resumes/ResumeUpload'
+import ResumeHistory from '../resumes/ResumeHistory'
 import {
   ArrowLeft, Mail, Phone, BookOpen, Calendar,
   Award, AlertTriangle, Users, Edit2, Trash2, Save, X,
   CheckCircle, XCircle, Clock, TrendingUp, Activity,
-  BarChart2, Target, Layers
+  BarChart2, Target, Layers, FileText, Briefcase
 } from 'lucide-react'
 
 /* ── Status config ─────────────────────────────────────── */
@@ -90,6 +92,25 @@ export default function StudentProfilePage() {
   const [savingBatch, setSavingBatch] = useState(false)
   const [activeTab, setActiveTab]     = useState('submissions')
 
+  // Placement Hub states
+  const [editingPlacement, setEditingPlacement] = useState(false)
+  const [placementForm, setPlacementForm] = useState({
+    domain: '',
+    college: '',
+    passout_year: '',
+    current_location: '',
+    skills: '',
+    github: '',
+    linkedin: ''
+  })
+  const [savingPlacement, setSavingPlacement] = useState(false)
+  const [refreshHistory, setRefreshHistory] = useState(0)
+
+  // Mentor notes states
+  const [profileNotes, setProfileNotes] = useState([])
+  const [newProfileNote, setNewProfileNote] = useState('')
+  const [savingProfileNote, setSavingProfileNote] = useState(false)
+
   const backPath = user?.role === 'admin'
     ? '/admin/students'
     : user?.role === 'faculty'
@@ -109,6 +130,26 @@ export default function StudentProfilePage() {
       const res = await userAPI.getStudentProfile(studentId)
       setProfile(res.data)
       setSelectedBatchId(res.data.currentBatch?.id || '')
+      
+      const s = res.data.student
+      setPlacementForm({
+        domain: s.domain || '',
+        college: s.college || '',
+        passout_year: s.passout_year || '',
+        current_location: s.current_location || '',
+        skills: s.skills || '',
+        github: s.github || '',
+        linkedin: s.linkedin || ''
+      })
+
+      if (['admin', 'coordinator', 'faculty'].includes(user?.role)) {
+        try {
+          const notesRes = await resumeAPI.getNotes(studentId)
+          setProfileNotes(notesRes.data)
+        } catch (e) {
+          console.error('Error fetching student notes on profile', e)
+        }
+      }
     } catch {
       setError('Failed to load student profile.')
     } finally {
@@ -141,6 +182,57 @@ export default function StudentProfilePage() {
       alert('Failed to remove from batch.')
     } finally {
       setSavingBatch(false)
+    }
+  }
+
+  const handleUpdatePlacement = async (e) => {
+    e.preventDefault()
+    setSavingPlacement(true)
+    try {
+      await resumeAPI.updatePlacementInfo(studentId, {
+        domain: placementForm.domain,
+        college: placementForm.college,
+        passout_year: placementForm.passout_year,
+        current_location: placementForm.current_location,
+        skills: placementForm.skills,
+        github: placementForm.github,
+        linkedin: placementForm.linkedin
+      })
+      await loadProfile()
+      setEditingPlacement(false)
+    } catch (err) {
+      alert('Failed to update placement details.')
+    } finally {
+      setSavingPlacement(false)
+    }
+  }
+
+  const handleAddProfileNote = async (e) => {
+    e.preventDefault()
+    if (!newProfileNote.trim()) return
+    setSavingProfileNote(true)
+    try {
+      await resumeAPI.addNote({
+        student_id: studentId,
+        note: newProfileNote
+      })
+      setNewProfileNote('')
+      const notesRes = await resumeAPI.getNotes(studentId)
+      setProfileNotes(notesRes.data)
+    } catch (err) {
+      alert('Failed to add note.')
+    } finally {
+      setSavingProfileNote(false)
+    }
+  }
+
+  const handleDeleteProfileNote = async (noteId) => {
+    if (!window.confirm('Are you sure you want to delete this note?')) return
+    try {
+      await resumeAPI.deleteNote(noteId)
+      setProfileNotes(prev => prev.filter(n => n.id !== noteId))
+    } catch (err) {
+      alert('Failed to delete note.')
     }
   }
 
@@ -464,6 +556,248 @@ export default function StudentProfilePage() {
           </div>
         </div>
 
+        {/* ── 2-col Placement & Resumes Grid ───────────────── */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: 20, marginBottom: 20 }}>
+          
+          {/* Placement Info Card */}
+          <div style={styles.card}>
+            <div style={styles.cardHeader}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div style={{ ...styles.iconBox, background: '#e0f2fe', color: '#0369a1' }}><Briefcase size={15} /></div>
+                <span style={styles.cardTitle}>Placement & Academic Profile</span>
+              </div>
+              {!editingPlacement && (
+                <button onClick={() => setEditingPlacement(true)} style={styles.editBtn}>
+                  Edit Details
+                </button>
+              )}
+            </div>
+
+            {!editingPlacement ? (
+              <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <div>
+                    <label style={{ fontSize: 11, color: '#94a3b8', fontWeight: 600 }}>Domain</label>
+                    <p style={{ fontSize: 14, fontWeight: 700, color: '#0f172a' }}>{student.domain || 'Not Set'}</p>
+                  </div>
+                  <div>
+                    <label style={{ fontSize: 11, color: '#94a3b8', fontWeight: 600 }}>Passout Year</label>
+                    <p style={{ fontSize: 14, fontWeight: 700, color: '#0f172a' }}>{student.passout_year || 'Not Set'}</p>
+                  </div>
+                </div>
+
+                <div>
+                  <label style={{ fontSize: 11, color: '#94a3b8', fontWeight: 600 }}>College / University</label>
+                  <p style={{ fontSize: 14, fontWeight: 700, color: '#0f172a' }}>{student.college || 'Not Set'}</p>
+                </div>
+
+                <div>
+                  <label style={{ fontSize: 11, color: '#94a3b8', fontWeight: 600 }}>Current Location</label>
+                  <p style={{ fontSize: 14, fontWeight: 700, color: '#0f172a' }}>{student.current_location || 'Not Set'}</p>
+                </div>
+
+                <div>
+                  <label style={{ fontSize: 11, color: '#94a3b8', fontWeight: 600 }}>Skills</label>
+                  {student.skills ? (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
+                      {student.skills.split(',').map((s, i) => (
+                        <span key={i} style={{ background: '#f1f5f9', color: '#475569', padding: '2px 8px', borderRadius: 4, fontSize: 11, fontWeight: 600 }}>
+                          {s.trim()}
+                        </span>
+                      ))}
+                    </div>
+                  ) : (
+                    <p style={{ fontSize: 13, color: '#94a3b8', fontStyle: 'italic', margin: 0 }}>No skills listed</p>
+                  )}
+                </div>
+
+                <div style={{ display: 'flex', gap: 14, marginTop: 4 }}>
+                  {student.github && (
+                    <a href={student.github.startsWith('http') ? student.github : `https://${student.github}`} target="_blank" rel="noopener noreferrer" style={{ fontSize: 13, color: '#4f46e5', fontWeight: 600, textDecoration: 'none' }}>
+                      🐙 GitHub
+                    </a>
+                  )}
+                  {student.linkedin && (
+                    <a href={student.linkedin.startsWith('http') ? student.linkedin : `https://${student.linkedin}`} target="_blank" rel="noopener noreferrer" style={{ fontSize: 13, color: '#4f46e5', fontWeight: 600, textDecoration: 'none' }}>
+                      🔗 LinkedIn
+                    </a>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <form onSubmit={handleUpdatePlacement} style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                  <div>
+                    <label style={{ fontSize: 11, color: '#64748b', display: 'block', marginBottom: 4, fontWeight: 600 }}>Domain</label>
+                    <select
+                      value={placementForm.domain}
+                      onChange={e => setPlacementForm({ ...placementForm, domain: e.target.value })}
+                      style={styles.select}
+                    >
+                      <option value="">Select Domain</option>
+                      <option value="Frontend">Frontend</option>
+                      <option value="MERN">MERN</option>
+                      <option value="Java">Java</option>
+                      <option value="Python">Python</option>
+                      <option value="Testing">Testing</option>
+                      <option value="UI/UX">UI/UX</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ fontSize: 11, color: '#64748b', display: 'block', marginBottom: 4, fontWeight: 600 }}>Passout Year</label>
+                    <input
+                      type="number"
+                      placeholder="e.g. 2025"
+                      value={placementForm.passout_year}
+                      onChange={e => setPlacementForm({ ...placementForm, passout_year: e.target.value })}
+                      style={styles.formInput}
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label style={{ fontSize: 11, color: '#64748b', display: 'block', marginBottom: 4, fontWeight: 600 }}>College</label>
+                  <input
+                    type="text"
+                    placeholder="College/University Name"
+                    value={placementForm.college}
+                    onChange={e => setPlacementForm({ ...placementForm, college: e.target.value })}
+                    style={styles.formInput}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ fontSize: 11, color: '#64748b', display: 'block', marginBottom: 4, fontWeight: 600 }}>Current Location</label>
+                  <input
+                    type="text"
+                    placeholder="City, State"
+                    value={placementForm.current_location}
+                    onChange={e => setPlacementForm({ ...placementForm, current_location: e.target.value })}
+                    style={styles.formInput}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ fontSize: 11, color: '#64748b', display: 'block', marginBottom: 4, fontWeight: 600 }}>Skills (comma separated)</label>
+                  <input
+                    type="text"
+                    placeholder="React, Node, SQL"
+                    value={placementForm.skills}
+                    onChange={e => setPlacementForm({ ...placementForm, skills: e.target.value })}
+                    style={styles.formInput}
+                  />
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                  <div>
+                    <label style={{ fontSize: 11, color: '#64748b', display: 'block', marginBottom: 4, fontWeight: 600 }}>GitHub Profile URL</label>
+                    <input
+                      type="text"
+                      placeholder="github.com/username"
+                      value={placementForm.github}
+                      onChange={e => setPlacementForm({ ...placementForm, github: e.target.value })}
+                      style={styles.formInput}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: 11, color: '#64748b', display: 'block', marginBottom: 4, fontWeight: 600 }}>LinkedIn Profile URL</label>
+                    <input
+                      type="text"
+                      placeholder="linkedin.com/in/username"
+                      value={placementForm.linkedin}
+                      onChange={e => setPlacementForm({ ...placementForm, linkedin: e.target.value })}
+                      style={styles.formInput}
+                    />
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+                  <button type="submit" disabled={savingPlacement} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '7px 16px', fontSize: 13, borderRadius: 8, fontWeight: 600, background: '#6366f1', color: '#fff', border: 'none', cursor: 'pointer' }}>
+                    <Save size={13} /> {savingPlacement ? 'Saving…' : 'Save Details'}
+                  </button>
+                  <button type="button" onClick={() => setEditingPlacement(false)} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '7px 12px', fontSize: 13, borderRadius: 8, background: 'transparent', color: '#64748b', border: '1px solid #e2e8f0', cursor: 'pointer' }}>
+                    <X size={13} /> Cancel
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+
+          {/* Resume Upload & Version History Card */}
+          <div style={styles.card}>
+            <div style={styles.cardHeader}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div style={{ ...styles.iconBox, background: '#e6fffa', color: '#0f766e' }}><FileText size={15} /></div>
+                <span style={styles.cardTitle}>Student Resume Hub</span>
+              </div>
+            </div>
+
+            <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 16 }}>
+              {/* Only the student themselves or admin can upload a new resume */}
+              {(!isStaff || user?.role === 'admin') && (
+                <ResumeUpload
+                  studentId={studentId}
+                  onUploadSuccess={() => setRefreshHistory(prev => prev + 1)}
+                />
+              )}
+
+              {/* Version list */}
+              <ResumeHistory
+                studentId={studentId}
+                refreshTrigger={refreshHistory}
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* ── Private Mentor Notes (Visible only to staff) ──── */}
+        {isStaff && (
+          <div style={{ ...styles.card, marginBottom: 20 }}>
+            <div style={styles.cardHeader}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div style={{ ...styles.iconBox, background: '#fffbeb', color: '#b45309' }}>📝</div>
+                <span style={styles.cardTitle}>Private Mentor Notes (Placement Internal Only)</span>
+              </div>
+            </div>
+
+            <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <form onSubmit={handleAddProfileNote} style={{ display: 'flex', gap: 10 }}>
+                <input
+                  type="text"
+                  placeholder="Add private note for student placement tracking..."
+                  value={newProfileNote}
+                  onChange={e => setNewProfileNote(e.target.value)}
+                  style={{ ...styles.formInput, flex: 1, margin: 0 }}
+                  required
+                />
+                <button type="submit" disabled={savingProfileNote || !newProfileNote.trim()} style={{ background: '#b45309', color: '#fff', border: 'none', borderRadius: 8, padding: '0 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+                  {savingProfileNote ? 'Saving...' : 'Add Note'}
+                </button>
+              </form>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: '200px', overflowY: 'auto' }}>
+                {profileNotes.length === 0 ? (
+                  <p style={{ fontSize: 13, color: '#94a3b8', fontStyle: 'italic', margin: 0 }}>No private notes written yet.</p>
+                ) : (
+                  profileNotes.map(note => (
+                    <div key={note.id} style={{ background: '#fefbec', border: '1px solid #fef08a', borderRadius: 10, padding: '10px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                        <p style={{ fontSize: 13, color: '#1e293b', margin: 0 }}>{note.note}</p>
+                        <span style={{ fontSize: 10, color: '#a1a1aa' }}>
+                          By {note.author_name} ({note.author_role}) · {new Date(note.created_at).toLocaleDateString('en-IN')}
+                        </span>
+                      </div>
+                      <button type="button" onClick={() => handleDeleteProfileNote(note.id)} style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: 11, fontWeight: '700' }}>
+                        ✕
+                      </button>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* ── Submission history card ─────────────────────── */}
         <div style={styles.card}>
           {/* Card header with tabs */}
@@ -640,5 +974,16 @@ const styles = {
     width: '100%', padding: '9px 12px', fontSize: 13, borderRadius: 10,
     border: '1px solid #e2e8f0', background: '#fff', color: '#0f172a',
     outline: 'none', cursor: 'pointer'
+  },
+  formInput: {
+    width: '100%',
+    padding: '9px 12px',
+    fontSize: '13px',
+    borderRadius: '10px',
+    border: '1px solid #cbd5e1',
+    background: '#fff',
+    color: '#0f172a',
+    outline: 'none',
+    marginBottom: '4px'
   }
 }

@@ -1,8 +1,10 @@
 import React from 'react'
-import { Routes, Route, Navigate } from 'react-router-dom'
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { useAuth } from './context/AuthContext'
 import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
+import favicon1 from './assets/favicon1.png'
+import favicon from './assets/favicon.png'
 import AdminDashboard from './pages/AdminDashboard'
 import AdminAnalytics from './pages/admin/AdminAnalytics'
 import ProjectsManagement from './pages/admin/ProjectsManagement'
@@ -44,6 +46,8 @@ import MessagingPage from './pages/MessagingPage'
 import FacultyProjects from './pages/faculty/FacultyProjects'
 import FacultySessions from './pages/faculty/FacultySessions'
 import FacultyPerformance from './pages/faculty/FacultyPerformance'
+import ResumeDashboard from './pages/resumes/ResumeDashboard'
+import ResumeSharePage from './pages/resumes/ResumeSharePage'
 
 import Layout from './components/layout/Layout'
 import AdminLayout from './components/layout/AdminLayout'
@@ -53,6 +57,64 @@ import FacultyLayout from './components/layout/FacultyLayout'
 
 function App() {
   const { user, loading } = useAuth()
+  const location = useLocation()
+
+  React.useEffect(() => {
+    let title = 'VCUBE LMS Platform';
+    let isResumePage = false;
+    const path = location.pathname;
+
+    if (path === '/resumes') {
+      title = 'Placement Resume Hub | VCUBE';
+      isResumePage = true;
+    } else if (path.startsWith('/resumes/share/')) {
+      title = 'Shared Resumes | VCUBE';
+      isResumePage = true;
+    } else if (path === '/login') {
+      title = 'Login | VCUBE LMS';
+    } else if (path === '/dashboard') {
+      title = 'Dashboard | VCUBE LMS';
+    } else if (path.startsWith('/admin')) {
+      const sub = path.replace('/admin', '').replace(/^\//, '');
+      if (!sub) {
+        title = 'Admin Console | VCUBE LMS';
+      } else {
+        const capitalized = sub.charAt(0).toUpperCase() + sub.slice(1).replace('-', ' ');
+        title = `${capitalized} - Admin | VCUBE LMS`;
+      }
+    } else if (path.startsWith('/coordinator')) {
+      const sub = path.replace('/coordinator', '').replace(/^\//, '');
+      if (!sub) {
+        title = 'Coordinator Dashboard | VCUBE LMS';
+      } else {
+        const capitalized = sub.charAt(0).toUpperCase() + sub.slice(1).replace('-', ' ');
+        title = `${capitalized} - Coordinator | VCUBE LMS`;
+      }
+    } else if (path.startsWith('/student/')) {
+      const sub = path.replace('/student/', '');
+      const capitalized = sub.charAt(0).toUpperCase() + sub.slice(1).replace('-', ' ');
+      title = `${capitalized} - Student | VCUBE LMS`;
+    } else if (path.startsWith('/faculty')) {
+      const sub = path.replace('/faculty', '').replace(/^\//, '');
+      if (!sub) {
+        title = 'Faculty Dashboard | VCUBE LMS';
+      } else {
+        const capitalized = sub.charAt(0).toUpperCase() + sub.slice(1).replace('-', ' ');
+        title = `${capitalized} - Faculty | VCUBE LMS`;
+      }
+    } else if (path === '/users/profile') {
+      title = 'My Profile | VCUBE LMS';
+    }
+
+    document.title = title;
+
+    // Dynamically update favicon
+    const link = document.querySelector("link[rel*='icon']") || document.createElement('link');
+    link.type = 'image/png';
+    link.rel = 'shortcut icon';
+    link.href = isResumePage ? favicon : favicon1;
+    document.getElementsByTagName('head')[0].appendChild(link);
+  }, [location]);
 
   if (loading) {
     return (
@@ -65,6 +127,8 @@ function App() {
   return (
     <div className="App">
       <Routes>
+        <Route path="/resumes" element={<ResumeDashboard />} />
+        <Route path="/resumes/share/:token" element={<ResumeSharePage />} />
         <Route 
           path="/login" 
           element={!user ? <Login /> : <Navigate to={

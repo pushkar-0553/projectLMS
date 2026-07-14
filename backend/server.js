@@ -15,6 +15,8 @@ const attendanceRoutes = require('./routes/attendanceRoutes');
 const facultyRoutes = require('./routes/facultyRoutes');
 const messageRoutes = require('./routes/messageRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
+const resumeRoutes = require('./routes/resumeRoutes');
+const publicResumeRoutes = require('./routes/publicResumeRoutes');
 
 const http = require('http');
 const { initSocket } = require('./socket');
@@ -66,6 +68,8 @@ app.use('/api/attendance', attendanceRoutes);
 app.use('/api/faculty', facultyRoutes);
 app.use('/api/messages', messageRoutes);
 app.use('/api/notifications', notificationRoutes);
+app.use('/api', resumeRoutes);
+app.use('/api', publicResumeRoutes);
 
 app.get('/', (req, res) => {
   res.json({ message: 'Project Learning Module API is running' });
