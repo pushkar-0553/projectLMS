@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import ResumeStatusBadge from './ResumeStatusBadge';
+import { useAuth } from '../../context/AuthContext';
 
 const ResumeTable = ({
   students = [],
@@ -8,9 +9,12 @@ const ResumeTable = ({
   onSelectAllStudents,
   onViewResume,
   onDownloadResume,
+  onShareResume,
+  onSendWhatsApp,
   onManageNotes,
   onEditStudent
 }) => {
+  const { user } = useAuth();
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
 
@@ -69,6 +73,7 @@ const ResumeTable = ({
             ) : (
               currentItems.map((student) => {
                 const noteCount = student.notes ? student.notes.length : 0;
+                const isAllowedRole = !user || ['superadmin', 'super_admin', 'admin', 'coordinator'].includes(user.role);
                 
                 return (
                   <tr key={student.id} style={styles.tr}>
@@ -155,6 +160,15 @@ const ResumeTable = ({
                         >
                           ✏️ Edit
                         </button>
+                        {isAllowedRole && (
+                          <button
+                            onClick={() => onSendWhatsApp(student)}
+                            style={styles.actionBtnWhatsApp}
+                            title="Send WhatsApp Message"
+                          >
+                            💬 WhatsApp
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -351,6 +365,28 @@ const styles = {
     fontWeight: '600',
     color: '#16a34a',
     background: '#f0fdf4',
+    border: 'none',
+    borderRadius: '6px',
+    cursor: 'pointer',
+    transition: 'background 0.2s'
+  },
+  actionBtnShare: {
+    padding: '6px 10px',
+    fontSize: '12px',
+    fontWeight: '600',
+    color: '#0284c7',
+    background: '#f0f9ff',
+    border: 'none',
+    borderRadius: '6px',
+    cursor: 'pointer',
+    transition: 'background 0.2s'
+  },
+  actionBtnWhatsApp: {
+    padding: '6px 10px',
+    fontSize: '12px',
+    fontWeight: '600',
+    color: '#128c7e',
+    background: '#e8f5e9',
     border: 'none',
     borderRadius: '6px',
     cursor: 'pointer',

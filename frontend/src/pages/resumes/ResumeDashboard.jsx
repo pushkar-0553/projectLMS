@@ -6,8 +6,11 @@ import ResumeViewer from '../../components/resumes/ResumeViewer';
 import ResumeCollectionModal from '../../components/resumes/ResumeCollectionModal';
 import CollectionsList from '../../components/resumes/CollectionsList';
 import ResumeEditModal from '../../components/resumes/ResumeEditModal';
+import WhatsAppModal from '../../components/resumes/whatsapp/WhatsAppModal';
+import { useAuth } from '../../context/AuthContext';
 
 const ResumeDashboard = () => {
+  const { user } = useAuth();
   const [students, setStudents] = useState([]);
   const [filteredStudents, setFilteredStudents] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -32,6 +35,10 @@ const ResumeDashboard = () => {
   const [notesStudent, setNotesStudent] = useState(null);
   const [newNote, setNewNote] = useState('');
   const [submittingNote, setSubmittingNote] = useState(false);
+
+  // WhatsApp states
+  const [showWhatsAppModal, setShowWhatsAppModal] = useState(false);
+  const [whatsappStudents, setWhatsappStudents] = useState([]);
 
   // Phase 2 states
   const [collections, setCollections] = useState([]);
@@ -258,13 +265,29 @@ const ResumeDashboard = () => {
     }
   };
 
+  const isAllowedRole = !user || ['superadmin', 'super_admin', 'admin', 'coordinator'].includes(user.role);
+
   return (
     <div style={styles.container}>
       {/* Upper header */}
       <div style={styles.header}>
-        <div>
-          <h1 style={styles.title}>Placement Resume Hub</h1>
-          <p style={styles.subtitle}>Manage student profile metadata, view PDF resumes, and create public links for HR recruiters.</p>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', flexWrap: 'wrap', gap: '16px' }}>
+          <div>
+            <h1 style={styles.title}>Placement Resume Hub</h1>
+            <p style={styles.subtitle}>Manage student profile metadata, view PDF resumes, and create public links for HR recruiters.</p>
+          </div>
+          {isAllowedRole && (
+            <button
+              onClick={() => {
+                setWhatsappStudents([]);
+                setShowWhatsAppModal(true);
+              }}
+              style={styles.historyBtn}
+              title="View WhatsApp Audit Logs"
+            >
+              📜 WhatsApp History
+            </button>
+          )}
         </div>
       </div>
 
@@ -312,6 +335,14 @@ const ResumeDashboard = () => {
               onSelectAllStudents={handleSelectAllStudents}
               onViewResume={handleViewResume}
               onDownloadResume={handleDownloadResume}
+              onShareResume={(student) => {
+                setSelectedStudentIds([student.id]);
+                setShowCollectionModal(true);
+              }}
+              onSendWhatsApp={(student) => {
+                setWhatsappStudents([student]);
+                setShowWhatsAppModal(true);
+              }}
               onManageNotes={handleOpenNotes}
               onEditStudent={(s) => setEditStudent(s)}
             />
@@ -335,12 +366,26 @@ const ResumeDashboard = () => {
               <span style={styles.drawerCount}>{selectedStudentIds.length}</span>
               <span style={styles.drawerLabel}>Candidates Selected</span>
             </div>
-            <button
-              onClick={() => setShowCollectionModal(true)}
-              style={styles.drawerBtn}
-            >
-              💼 Generate Share Link
-            </button>
+            <div style={{ display: 'flex', gap: '12px' }}>
+              {isAllowedRole && (
+                <button
+                  onClick={() => {
+                    const selected = students.filter(s => selectedStudentIds.includes(s.id));
+                    setWhatsappStudents(selected);
+                    setShowWhatsAppModal(true);
+                  }}
+                  style={styles.drawerBtnWhatsApp}
+                >
+                  💬 Send WhatsApp
+                </button>
+              )}
+              <button
+                onClick={() => setShowCollectionModal(true)}
+                style={styles.drawerBtn}
+              >
+                💼 Generate Share Link
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -443,6 +488,17 @@ const ResumeDashboard = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {/* WhatsApp Modal */}
+      {showWhatsAppModal && (
+        <WhatsAppModal
+          students={whatsappStudents}
+          onClose={() => {
+            setShowWhatsAppModal(false);
+            setWhatsappStudents([]);
+          }}
+        />
       )}
     </div>
   );
@@ -733,6 +789,34 @@ const styles = {
     fontSize: '10px',
     color: '#94a3b8',
     alignSelf: 'flex-end'
+  },
+  historyBtn: {
+    padding: '10px 18px',
+    background: '#ffffff',
+    border: '1px solid #cbd5e1',
+    color: '#334155',
+    borderRadius: '10px',
+    fontSize: '14px',
+    fontWeight: '600',
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    boxShadow: '0 1px 2px 0 rgb(0 0 0 / 0.05)',
+    transition: 'all 0.2s'
+  },
+  drawerBtnWhatsApp: {
+    padding: '10px 20px',
+    background: '#128c7e',
+    color: '#ffffff',
+    border: 'none',
+    borderRadius: '8px',
+    fontWeight: '700',
+    fontSize: '14px',
+    cursor: 'pointer',
+    boxShadow: '0 2px 4px rgba(18, 140, 126, 0.2)',
+    transition: 'background-color 0.2s',
+    marginRight: '8px'
   }
 };
 
