@@ -1,10 +1,13 @@
 import React from 'react';
+import { resolveAssetUrl } from '../../services/api';
 
 /**
  * Premium Inline PDF Resume Viewer Modal
  */
 const ResumeViewer = ({ student, onClose }) => {
-  if (!student || !student.cloudinary_url) return null;
+  const resumeUrl = student ? (student.cloudinary_url || resolveAssetUrl(student.file_name || student.resume_file_name)) : null;
+
+  if (!student || !resumeUrl) return null;
 
   return (
     <div style={styles.modalOverlay}>
@@ -16,7 +19,7 @@ const ResumeViewer = ({ student, onClose }) => {
           </div>
           <div style={styles.headerActions}>
             <a
-              href={student.cloudinary_url}
+              href={resumeUrl}
               target="_blank"
               rel="noopener noreferrer"
               style={styles.newTabBtn}
@@ -29,7 +32,7 @@ const ResumeViewer = ({ student, onClose }) => {
 
         <div style={styles.modalBody}>
           <iframe
-            src={student.cloudinary_url}
+            src={resumeUrl}
             title={`${student.name} Resume`}
             style={styles.iframe}
           />

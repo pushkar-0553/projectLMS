@@ -5,7 +5,11 @@ const User = require('../models/userModel');
 // Issue #31 fix: Populate req.user.name for messaging
 const protect = async (req, res, next) => {
   const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1];
+  let token = authHeader && authHeader.split(' ')[1];
+
+  if (!token && req.query.token) {
+    token = req.query.token;
+  }
 
   if (!token) {
     return res.status(401).json({ message: 'Access token required' });

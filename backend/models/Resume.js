@@ -219,6 +219,21 @@ class Resume {
     );
     return result.affectedRows > 0;
   }
+
+  /**
+   * Get all recruiter review evaluations for a student (excluding pending).
+   */
+  static async getRecruiterReviews(studentId) {
+    const [rows] = await pool.execute(
+      `SELECT rcs.*, rc.title as collection_title, rc.company_name
+       FROM resume_collection_students rcs
+       JOIN resume_collections rc ON rcs.collection_id = rc.id
+       WHERE rcs.student_id = ? AND rcs.review_status != 'pending'
+       ORDER BY rcs.reviewed_at DESC`,
+      [studentId]
+    );
+    return rows;
+  }
 }
 
 module.exports = Resume;

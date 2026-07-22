@@ -2,15 +2,31 @@ import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { resumeAPI, resolveAssetUrl } from '../../services/api';
 import ResumeViewer from '../../components/resumes/ResumeViewer';
+import PlacementShareHubModal from '../../components/resumes/PlacementShareHubModal';
+import styles from './ResumeSharePage.styles';
+
 
 const ResumeSharePage = () => {
   const { token } = useParams();
   const [collection, setCollection] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  
+
   // PDF Viewer state
   const [viewerStudent, setViewerStudent] = useState(null);
+
+  // Bulk Selection states
+  const [selectedStudentIds, setSelectedStudentIds] = useState([]);
+
+  // Recruiter Evaluation Modal states
+  const [evaluationStudent, setEvaluationStudent] = useState(null);
+  const [reviewStatus, setReviewStatus] = useState('pending');
+  const [reviewComment, setReviewComment] = useState('');
+  const [submittingReview, setSubmittingReview] = useState(false);
+  const [validationError, setValidationError] = useState('');
+
+  // Share Center Dialog state
+  const [showShareHub, setShowShareHub] = useState(false);
 
   useEffect(() => {
     loadCollection();
@@ -28,7 +44,7 @@ const ResumeSharePage = () => {
     } catch (err) {
       console.error(err);
       setError(
-        err.response?.data?.message || 
+        err.response?.data?.message ||
         'This resume collection is invalid, has expired, or is currently inactive.'
       );
     } finally {
@@ -36,9 +52,94 @@ const ResumeSharePage = () => {
     }
   };
 
+  // Single PDF download hitting backend rename route
   const handleDownload = (student) => {
-    if (student.cloudinary_url) {
-      window.open(student.cloudinary_url, '_blank');
+    if (student.cloudinary_url || student.file_name || student.resume_file_name) {
+      const downloadUrl = resumeAPI.getPublicSingleDownloadUrl(token, student.id);
+      window.location.href = downloadUrl;
+    }
+  };
+
+  // Bulk ZIP download hitting backend zip builder
+  const handleDownloadBulkZIP = () => {
+    if (!collection) return;
+
+    // If specific candidates are checked, download only those. Otherwise, download all in the collection.
+    const idsToDownload = selectedStudentIds.length > 0
+      ? selectedStudentIds
+      : collection.students.filter(s => s.cloudinary_url || s.file_name || s.resume_file_name).map(s => s.id);
+
+    if (idsToDownload.length === 0) {
+      alert('No candidates with uploaded resumes found for download.');
+      return;
+    }
+
+    const downloadUrl = resumeAPI.getPublicBulkDownloadUrl(token, idsToDownload);
+    window.location.href = downloadUrl;
+    setSelectedStudentIds([]); // Clear selection
+  };
+
+
+
+  // Submit recruiter evaluation review
+  const handleSaveEvaluation = async (e) => {
+    e.preventDefault();
+    setValidationError('');
+    setSubmittingReview(true);
+
+    try {
+      await resumeAPI.submitPublicReview(token, {
+        student_id: evaluationStudent.id,
+        review_status: reviewStatus,
+        review_comment: reviewComment
+      });
+
+      // Update local state details in-place
+      const updatedStudents = collection.students.map(s => {
+        if (s.id === evaluationStudent.id) {
+          return {
+            ...s,
+            review_status: reviewStatus,
+            review_comment: reviewComment,
+            reviewed_at: new Date()
+          };
+        }
+        return s;
+      });
+
+      setCollection(prev => ({
+        ...prev,
+        students: updatedStudents
+      }));
+
+      setEvaluationStudent(null);
+    } catch (err) {
+      console.error(err);
+      setValidationError(err.response?.data?.message || 'Failed to submit evaluation.');
+    } finally {
+      setSubmittingReview(false);
+    }
+  };
+
+  const getStatusPillStyle = (status) => {
+    switch (status) {
+      case 'selected':
+        return { background: '#d1fae5', color: '#065f46', border: '1px solid #a7f3d0' };
+      case 'unselected':
+        return { background: '#fee2e2', color: '#991b1b', border: '1px solid #fca5a5' };
+      case 'go_to_next':
+        return { background: '#fef3c7', color: '#92400e', border: '1px solid #fde68a' };
+      default:
+        return { background: '#f1f5f9', color: '#64748b', border: '1px solid #cbd5e1' };
+    }
+  };
+
+  const getStatusLabel = (status) => {
+    switch (status) {
+      case 'selected': return 'SELECTED ✅';
+      case 'unselected': return 'UNSELECTED ❌';
+      case 'go_to_next': return 'GO TO NEXT ONE ➡️';
+      default: return 'PENDING 🕒';
     }
   };
 
@@ -64,6 +165,8 @@ const ResumeSharePage = () => {
     );
   }
 
+  const allSelected = collection.students.length > 0 && selectedStudentIds.length === collection.students.length;
+
   return (
     <div style={styles.page}>
       {/* Background blobs for premium appearance */}
@@ -77,7 +180,16 @@ const ResumeSharePage = () => {
             <span style={styles.logoIcon}>🎓</span>
             <span style={styles.logoText}>VCUBE Placements</span>
           </div>
-          <span style={styles.badgePublic}>Public Share Catalog</span>
+          <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+            <button
+              onClick={() => setShowShareHub(true)}
+              style={styles.shareHubBtn}
+              title="Open Placement Sharing & Integration Hub"
+            >
+              📤 Share & Export Hub
+            </button>
+            <span style={styles.badgePublic}>Public Share Catalog</span>
+          </div>
         </header>
 
         {/* Collection info header card */}
@@ -173,24 +285,51 @@ const ResumeSharePage = () => {
             <table style={styles.table}>
               <thead>
                 <tr>
+                  <th style={styles.thCheck}>
+                    <input
+                      type="checkbox"
+                      checked={allSelected}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setSelectedStudentIds(collection.students.map(s => s.id));
+                        } else {
+                          setSelectedStudentIds([]);
+                        }
+                      }}
+                      style={styles.checkbox}
+                    />
+                  </th>
                   <th style={styles.th}>Candidate Name</th>
                   <th style={styles.th}>Domain</th>
                   <th style={styles.th}>Email Address</th>
                   <th style={styles.th}>Mobile Number</th>
                   <th style={styles.th}>Education & Background</th>
+                  <th style={styles.th}>Evaluation Status</th>
                   <th style={styles.thActions}>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {collection.students.length === 0 ? (
                   <tr>
-                    <td colSpan="6" style={styles.emptyCell}>
+                    <td colSpan="8" style={styles.emptyCell}>
                       No candidates mapped in this collection yet.
                     </td>
                   </tr>
                 ) : (
                   collection.students.map((student) => (
                     <tr key={student.id} style={styles.tr}>
+                      <td style={styles.tdCheck}>
+                        <input
+                          type="checkbox"
+                          checked={selectedStudentIds.includes(student.id)}
+                          onChange={() => {
+                            setSelectedStudentIds(prev =>
+                              prev.includes(student.id) ? prev.filter(id => id !== student.id) : [...prev, student.id]
+                            );
+                          }}
+                          style={styles.checkbox}
+                        />
+                      </td>
                       <td style={styles.tdName}>
                         <div style={styles.nameBlock}>
                           <span style={styles.nameText}>{student.name}</span>
@@ -240,8 +379,23 @@ const ResumeSharePage = () => {
                           </div>
                         </div>
                       </td>
+                      <td style={styles.td}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'flex-start' }}>
+                          <span style={{
+                            ...styles.statusBadge,
+                            ...getStatusPillStyle(student.review_status)
+                          }}>
+                            {getStatusLabel(student.review_status)}
+                          </span>
+                          {student.review_comment && (
+                            <span style={styles.commentSnippet} title={student.review_comment}>
+                              "{student.review_comment}"
+                            </span>
+                          )}
+                        </div>
+                      </td>
                       <td style={styles.tdActions}>
-                        {student.cloudinary_url ? (
+                        {student.cloudinary_url || student.file_name || student.resume_file_name ? (
                           <div style={styles.actionsGroup}>
                             <button
                               onClick={() => setViewerStudent(student)}
@@ -254,6 +408,16 @@ const ResumeSharePage = () => {
                               style={styles.actionBtnDownload}
                             >
                               📥 Download PDF
+                            </button>
+                            <button
+                              onClick={() => {
+                                setEvaluationStudent(student);
+                                setReviewStatus(student.review_status || 'pending');
+                                setReviewComment(student.review_comment || '');
+                              }}
+                              style={styles.actionBtnEvaluate}
+                            >
+                              📝 Evaluate
                             </button>
                           </div>
                         ) : (
@@ -269,6 +433,66 @@ const ResumeSharePage = () => {
         </div>
       </div>
 
+      {/* Evaluation Feedback Modal */}
+      {evaluationStudent && (
+        <div style={styles.modalOverlay}>
+          <div style={styles.evalModal}>
+            <div style={styles.modalHeader}>
+              <div>
+                <h3 style={styles.modalTitle}>Placement Candidate Review</h3>
+                <p style={styles.modalSubtitle}>{evaluationStudent.name} · {collection.company_name || 'Placement drive'}</p>
+              </div>
+              <button onClick={() => setEvaluationStudent(null)} style={styles.closeBtn}>✕</button>
+            </div>
+
+            <div style={styles.modalBody}>
+              <form onSubmit={handleSaveEvaluation} style={styles.evalForm}>
+                <div style={styles.formGroup}>
+                  <label style={styles.label}>Evaluation Decision Status</label>
+                  <select
+                    value={reviewStatus}
+                    onChange={(e) => setReviewStatus(e.target.value)}
+                    style={styles.select}
+                    required
+                  >
+                    <option value="pending">PENDING 🕒</option>
+                    <option value="selected">SELECTED ✅</option>
+                    <option value="unselected">UNSELECTED ❌</option>
+                    <option value="go_to_next">GO TO NEXT ONE ➡️</option>
+                  </select>
+                </div>
+
+                <div style={styles.formGroup}>
+                  <label style={styles.label}>Review Feedback / Where is he lacking?</label>
+                  <textarea
+                    value={reviewComment}
+                    onChange={(e) => setReviewComment(e.target.value)}
+                    placeholder="Enter recruiter feedback details. Explain what skills, DSA knowledge, or soft skills they are lacking in, or why they were selected/unselected..."
+                    rows="5"
+                    style={styles.textarea}
+                  />
+                </div>
+
+                {validationError && (
+                  <div style={styles.errorAlert}>
+                    ⚠️ {validationError}
+                  </div>
+                )}
+
+                <div style={styles.footerActions}>
+                  <button type="button" onClick={() => setEvaluationStudent(null)} style={styles.cancelBtn}>
+                    Cancel
+                  </button>
+                  <button type="submit" disabled={submittingReview} style={styles.primaryBtn}>
+                    {submittingReview ? 'Saving...' : 'Save Evaluation Review'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Embed Viewer Modal */}
       {viewerStudent && (
         <ResumeViewer
@@ -276,322 +500,20 @@ const ResumeSharePage = () => {
           onClose={() => setViewerStudent(null)}
         />
       )}
+
+      {/* Placement Sharing & Integration Hub */}
+      <PlacementShareHubModal
+        isOpen={showShareHub}
+        onClose={() => setShowShareHub(false)}
+        collection={collection}
+        selectedStudentIds={selectedStudentIds}
+        token={token}
+        onDownloadZIP={handleDownloadBulkZIP}
+      />
     </div>
   );
 };
 
-const styles = {
-  page: {
-    minHeight: '100vh',
-    background: 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)',
-    position: 'relative',
-    overflow: 'hidden',
-    fontFamily: "'Inter', sans-serif"
-  },
-  blob1: {
-    position: 'absolute',
-    width: '400px',
-    height: '400px',
-    borderRadius: '50%',
-    background: 'rgba(79, 70, 229, 0.05)',
-    top: '-100px',
-    right: '-100px',
-    pointerEvents: 'none',
-    zIndex: 0
-  },
-  blob2: {
-    position: 'absolute',
-    width: '500px',
-    height: '500px',
-    borderRadius: '50%',
-    background: 'rgba(14, 165, 233, 0.04)',
-    bottom: '-200px',
-    left: '-200px',
-    pointerEvents: 'none',
-    zIndex: 0
-  },
-  container: {
-    maxWidth: '1200px',
-    margin: '0 auto',
-    padding: '32px 24px',
-    position: 'relative',
-    zIndex: 1
-  },
-  portalHeader: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: '24px'
-  },
-  branding: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '10px'
-  },
-  logoIcon: {
-    fontSize: '24px'
-  },
-  logoText: {
-    fontSize: '18px',
-    fontWeight: '800',
-    color: '#0f172a',
-    letterSpacing: '-0.02em'
-  },
-  badgePublic: {
-    padding: '4px 12px',
-    background: '#e0f2fe',
-    color: '#0369a1',
-    borderRadius: '9999px',
-    fontSize: '12px',
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: '0.04em'
-  },
-  headerCard: {
-    background: '#ffffff',
-    border: '1px solid #e2e8f0',
-    borderRadius: '16px',
-    boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)',
-    padding: '28px',
-    marginBottom: '24px',
-    position: 'relative',
-    overflow: 'hidden'
-  },
-  headerAccent: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: '4px',
-    background: 'linear-gradient(90deg, #4f46e5, #0ea5e9)'
-  },
-  collectionTitle: {
-    fontSize: '24px',
-    fontWeight: '800',
-    color: '#0f172a',
-    margin: '0 0 10px'
-  },
-  metaRow: {
-    display: 'flex',
-    gap: '24px',
-    flexWrap: 'wrap'
-  },
-  metaItem: {
-    fontSize: '13px',
-    color: '#64748b'
-  },
-  tableCard: {
-    background: '#ffffff',
-    border: '1px solid #e2e8f0',
-    borderRadius: '16px',
-    boxShadow: '0 10px 15px -3px rgba(0,0,0,0.05)',
-    padding: '24px',
-    overflow: 'hidden'
-  },
-  tableWrapper: {
-    overflowX: 'auto'
-  },
-  table: {
-    width: '100%',
-    borderCollapse: 'collapse',
-    textAlign: 'left'
-  },
-  th: {
-    padding: '12px 16px',
-    fontSize: '11px',
-    fontWeight: '700',
-    color: '#64748b',
-    borderBottom: '2px solid #f1f5f9',
-    textTransform: 'uppercase',
-    letterSpacing: '0.05em'
-  },
-  tr: {
-    borderBottom: '1px solid #f1f5f9',
-    transition: 'background 0.2s',
-    '&:hover': {
-      background: '#f8fafc'
-    }
-  },
-  td: {
-    padding: '16px',
-    fontSize: '14px',
-    color: '#334155'
-  },
-  tdName: {
-    padding: '16px',
-    fontSize: '14px',
-    fontWeight: '700',
-    color: '#0f172a'
-  },
-  nameBlock: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '4px'
-  },
-  nameText: {
-    fontSize: '14px',
-    fontWeight: '700'
-  },
-  locationText: {
-    fontSize: '11px',
-    color: '#64748b',
-    fontWeight: '500'
-  },
-  domainBadge: {
-    padding: '4px 8px',
-    borderRadius: '6px',
-    fontSize: '12px',
-    fontWeight: '600'
-  },
-  link: {
-    color: '#4f46e5',
-    textDecoration: 'none',
-    fontWeight: '500'
-  },
-  tdInfo: {
-    padding: '16px',
-    maxWidth: '300px'
-  },
-  infoBlock: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '6px'
-  },
-  infoLine: {
-    fontSize: '12px',
-    color: '#475569'
-  },
-  skillsRow: {
-    display: 'flex',
-    flexWrap: 'wrap',
-    gap: '4px',
-    marginTop: '2px'
-  },
-  skillPill: {
-    background: '#f1f5f9',
-    color: '#475569',
-    padding: '2px 6px',
-    borderRadius: '4px',
-    fontSize: '10px',
-    fontWeight: '600'
-  },
-  linksRow: {
-    display: 'flex',
-    gap: '10px',
-    marginTop: '4px'
-  },
-  socialLink: {
-    fontSize: '11px',
-    color: '#4f46e5',
-    textDecoration: 'none',
-    fontWeight: '600'
-  },
-  tdActions: {
-    padding: '16px',
-    textAlign: 'right'
-  },
-  actionsGroup: {
-    display: 'inline-flex',
-    flexDirection: 'column',
-    gap: '8px',
-    width: '130px'
-  },
-  actionBtnView: {
-    padding: '8px 12px',
-    fontSize: '12px',
-    fontWeight: '700',
-    color: '#ffffff',
-    background: '#4f46e5',
-    border: 'none',
-    borderRadius: '6px',
-    cursor: 'pointer',
-    width: '100%',
-    transition: 'background 0.2s'
-  },
-  actionBtnDownload: {
-    padding: '8px 12px',
-    fontSize: '12px',
-    fontWeight: '700',
-    color: '#1e293b',
-    background: '#ffffff',
-    border: '1px solid #cbd5e1',
-    borderRadius: '6px',
-    cursor: 'pointer',
-    width: '100%',
-    transition: 'background 0.2s'
-  },
-  noResume: {
-    fontSize: '12px',
-    color: '#94a3b8',
-    fontStyle: 'italic'
-  },
-  emptyCell: {
-    padding: '48px 0',
-    textAlign: 'center',
-    color: '#64748b',
-    fontSize: '14px'
-  },
-  loadingContainer: {
-    minHeight: '100vh',
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    justifyContent: 'center',
-    background: '#f8fafc',
-    gap: '16px'
-  },
-  spinner: {
-    width: '40px',
-    height: '40px',
-    border: '4px solid #e2e8f0',
-    borderTopColor: '#4f46e5',
-    borderRadius: '50%',
-    animation: 'spin 0.8s linear infinite'
-  },
-  loadingText: {
-    fontSize: '15px',
-    color: '#64748b',
-    fontWeight: '600'
-  },
-  errorContainer: {
-    minHeight: '100vh',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    background: '#f8fafc',
-    padding: '24px'
-  },
-  errorCard: {
-    background: '#ffffff',
-    borderRadius: '16px',
-    padding: '40px 24px',
-    maxWidth: '480px',
-    textAlign: 'center',
-    boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)',
-    border: '1px solid #f1f5f9'
-  },
-  errorIcon: {
-    fontSize: '48px',
-    marginBottom: '16px'
-  },
-  errorTitle: {
-    fontSize: '20px',
-    fontWeight: '800',
-    color: '#0f172a',
-    marginBottom: '10px'
-  },
-  errorText: {
-    fontSize: '14px',
-    color: '#ef4444',
-    lineHeight: '1.6',
-    marginBottom: '16px',
-    fontWeight: '600'
-  },
-  errorSubtext: {
-    fontSize: '12px',
-    color: '#64748b',
-    lineHeight: '1.5'
-  }
-};
+
 
 export default ResumeSharePage;

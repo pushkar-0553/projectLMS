@@ -130,6 +130,47 @@ const resumeCollectionController = {
       console.error('Get public collection error:', error);
       res.status(500).json({ message: 'Server error' });
     }
+  },
+
+  /**
+   * POST /api/public/resumes/:token/review
+   * Saves recruiter review and evaluation details.
+   */
+  async submitPublicReview(req, res) {
+    try {
+      const { token } = req.params;
+      const { student_id, review_status, review_comment } = req.body;
+
+      if (!student_id || !review_status) {
+        return res.status(400).json({ message: 'student_id and review_status are required' });
+      }
+
+      // Check if collection exists and is active
+      const collection = await ResumeCollection.getByToken(token);
+      if (!collection) {
+        return res.status(404).json({ message: 'Resume collection not found, expired, or inactive' });
+      }
+
+      // Verify student belongs to this collection
+      const belongs = collection.students.some(s => s.id === parseInt(student_id));
+      if (!belongs) {
+        return res.status(403).json({ message: 'Candidate does not belong to this collection' });
+      }
+
+      const updated = await ResumeCollection.updateStudentReview(collection.id, student_id, {
+        reviewStatus: review_status,
+        reviewComment: review_comment
+      });
+
+      if (!updated) {
+        return res.status(500).json({ message: 'Failed to submit review' });
+      }
+
+      res.json({ message: 'Evaluation review saved successfully' });
+    } catch (error) {
+      console.error('Submit public review error:', error);
+      res.status(500).json({ message: 'Server error' });
+    }
   }
 };
 

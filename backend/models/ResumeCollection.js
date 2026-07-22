@@ -82,7 +82,10 @@ class ResumeCollection {
         u.batch,
         u.domain,
         sr.resume_title,
-        sr.cloudinary_url
+        sr.cloudinary_url,
+        rcs.review_status,
+        rcs.review_comment,
+        rcs.reviewed_at
        FROM resume_collection_students rcs
        JOIN Users u ON rcs.student_id = u.id
        LEFT JOIN student_resumes sr ON u.id = sr.student_id AND sr.is_latest = TRUE
@@ -134,7 +137,10 @@ class ResumeCollection {
         u.current_location,
         u.skills,
         u.github,
-        u.linkedin
+        u.linkedin,
+        rcs.review_status,
+        rcs.review_comment,
+        rcs.reviewed_at
        FROM resume_collection_students rcs
        JOIN Users u ON rcs.student_id = u.id
        LEFT JOIN student_resumes sr ON u.id = sr.student_id AND sr.is_latest = TRUE
@@ -144,6 +150,19 @@ class ResumeCollection {
 
     collection.students = students;
     return collection;
+  }
+
+  /**
+   * Update student placement-related review feedback.
+   */
+  static async updateStudentReview(collectionId, studentId, { reviewStatus, reviewComment }) {
+    const [result] = await pool.execute(
+      `UPDATE resume_collection_students 
+       SET review_status = ?, review_comment = ?, reviewed_at = CURRENT_TIMESTAMP
+       WHERE collection_id = ? AND student_id = ?`,
+      [reviewStatus, reviewComment || null, collectionId, studentId]
+    );
+    return result.affectedRows > 0;
   }
 
   /**

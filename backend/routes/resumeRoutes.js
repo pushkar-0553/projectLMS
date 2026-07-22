@@ -42,6 +42,10 @@ router.delete('/resumes/:id', resumeController.deleteResume);
 // Replace a resume
 router.put('/resumes/:id', handleUpload, resumeController.replaceResume);
 
+// Download routes (pre-renamed and bundled ZIP files)
+router.get('/resumes/download-bulk', resumeController.downloadBulkResumes);
+router.get('/resumes/download/:id', resumeController.downloadSingleResume);
+
 // Get latest resume for a student
 router.get('/resumes/student/:id', resumeController.getLatestResume);
 

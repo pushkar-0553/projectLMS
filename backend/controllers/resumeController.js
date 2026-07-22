@@ -1,5 +1,7 @@
 const Resume = require('../models/Resume');
 const cloudinaryService = require('../services/cloudinaryService');
+const pool = require('../config/db');
+const JSZip = require('jszip');
 
 const resumeController = {
   /**
@@ -175,13 +177,15 @@ const resumeController = {
     try {
       const students = await Resume.getAllStudentsWithResumeStatus();
       
-      // Fetch notes for all students to avoid multiple db calls or do it in-memory
+      // Fetch notes and recruiter reviews for all students
       const studentsWithNotes = await Promise.all(
         students.map(async (student) => {
           const notes = await Resume.getNotes(student.id);
+          const reviews = await Resume.getRecruiterReviews(student.id);
           return {
             ...student,
-            notes
+            notes,
+            recruiter_reviews: reviews
           };
         })
       );
@@ -216,7 +220,8 @@ const resumeController = {
       const results = await Promise.all(
         filtered.map(async (student) => {
           const notes = await Resume.getNotes(student.id);
-          return { ...student, notes };
+          const reviews = await Resume.getRecruiterReviews(student.id);
+          return { ...student, notes, recruiter_reviews: reviews };
         })
       );
 
@@ -281,7 +286,8 @@ const resumeController = {
       const results = await Promise.all(
         students.map(async (student) => {
           const notes = await Resume.getNotes(student.id);
-          return { ...student, notes };
+          const reviews = await Resume.getRecruiterReviews(student.id);
+          return { ...student, notes, recruiter_reviews: reviews };
         })
       );
 
@@ -388,6 +394,228 @@ const resumeController = {
       res.json({ message: 'Student placement details updated successfully' });
     } catch (error) {
       console.error('Update placement info error:', error);
+      res.status(500).json({ message: 'Server error' });
+    }
+  },
+
+  /**
+   * GET /api/resumes/download/:id
+   * Downloads a single resume, renamed to standard format: [Student Name] - Resume.pdf
+   */
+  async downloadSingleResume(req, res) {
+    try {
+      const { id } = req.params;
+      const resume = await Resume.getLatestByStudent(id);
+      if (!resume) {
+        return res.status(404).json({ message: 'Resume not found' });
+      }
+
+      const [userRows] = await pool.execute('SELECT name FROM Users WHERE id = ?', [id]);
+      if (userRows.length === 0) {
+        return res.status(404).json({ message: 'Student not found' });
+      }
+      const studentName = userRows[0].name;
+      const safeName = studentName.replace(/[^a-zA-Z0-9\s-]/g, '').trim() || 'Student';
+
+      if (resume.cloudinary_url) {
+        const response = await fetch(resume.cloudinary_url);
+        if (!response.ok) {
+          return res.status(500).json({ message: 'Failed to retrieve resume from Cloudinary' });
+        }
+        const buffer = Buffer.from(await response.arrayBuffer());
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename="${safeName} - Resume.pdf"`);
+        res.send(buffer);
+      } else if (resume.file_name) {
+        const fs = require('fs');
+        const path = require('path');
+        const filePath = path.join(__dirname, '..', 'uploads', 'resumes', resume.file_name);
+        if (!fs.existsSync(filePath)) {
+          return res.status(404).json({ message: 'Local resume file not found' });
+        }
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename="${safeName} - Resume.pdf"`);
+        res.sendFile(filePath);
+      } else {
+        return res.status(404).json({ message: 'No resume file associated' });
+      }
+    } catch (error) {
+      console.error('Download resume error:', error);
+      res.status(500).json({ message: 'Server error' });
+    }
+  },
+
+  /**
+   * GET /api/resumes/download-bulk
+   * Downloads selected resumes bundled in a ZIP folder.
+   */
+  async downloadBulkResumes(req, res) {
+    try {
+      const studentIdsString = req.query.student_ids;
+      if (!studentIdsString) {
+        return res.status(400).json({ message: 'student_ids query parameter is required' });
+      }
+
+      const studentIds = studentIdsString.split(',').map(Number);
+      if (studentIds.length === 0) {
+        return res.status(400).json({ message: 'At least one student ID must be provided' });
+      }
+
+      const [rows] = await pool.execute(
+        `SELECT u.id, u.name, sr.cloudinary_url, sr.file_name, sr.resume_file_name 
+         FROM Users u
+         LEFT JOIN student_resumes sr ON u.id = sr.student_id AND sr.is_latest = TRUE
+         WHERE u.id IN (${studentIds.map(() => '?').join(',')}) AND u.role = 'student'`,
+        studentIds
+      );
+
+      const zip = new JSZip();
+      const promises = rows.map(async (student) => {
+        if (!student.cloudinary_url && !student.file_name && !student.resume_file_name) return;
+        try {
+          let buffer;
+          if (student.cloudinary_url) {
+            const fileResp = await fetch(student.cloudinary_url);
+            if (!fileResp.ok) return;
+            buffer = Buffer.from(await fileResp.arrayBuffer());
+          } else {
+            const fs = require('fs');
+            const path = require('path');
+            const fileName = student.file_name || student.resume_file_name;
+            const filePath = path.join(__dirname, '..', 'uploads', 'resumes', fileName);
+            if (!fs.existsSync(filePath)) return;
+            buffer = fs.readFileSync(filePath);
+          }
+          const safeName = student.name.replace(/[^a-zA-Z0-9\s-]/g, '').trim() || `Student-${student.id}`;
+          zip.file(`${safeName} - Resume.pdf`, buffer);
+        } catch (err) {
+          console.error(`Error zipping resume for ${student.name}:`, err);
+        }
+      });
+
+      await Promise.all(promises);
+
+      const zipBuffer = await zip.generateAsync({ type: 'nodebuffer' });
+
+      res.setHeader('Content-Type', 'application/zip');
+      res.setHeader('Content-Disposition', 'attachment; filename="Selected_Student_Resumes.zip"');
+      res.send(zipBuffer);
+    } catch (error) {
+      console.error('Download bulk resumes error:', error);
+      res.status(500).json({ message: 'Server error' });
+    }
+  },
+
+  /**
+   * GET /api/public/resumes/:token/download/:studentId
+   * Public download endpoint for single resume renamed.
+   */
+  async downloadSingleResumePublic(req, res) {
+    try {
+      const { token, studentId } = req.params;
+      const ResumeCollection = require('../models/ResumeCollection');
+      const collection = await ResumeCollection.getByToken(token);
+      if (!collection) {
+        return res.status(404).json({ message: 'Invalid or expired collection token' });
+      }
+
+      const student = collection.students.find(s => s.id === parseInt(studentId));
+      if (!student) {
+        return res.status(404).json({ message: 'Candidate not found in this collection' });
+      }
+
+      const safeName = student.name.replace(/[^a-zA-Z0-9\s-]/g, '').trim() || 'Student';
+
+      if (student.cloudinary_url) {
+        const response = await fetch(student.cloudinary_url);
+        if (!response.ok) {
+          return res.status(500).json({ message: 'Failed to retrieve resume from Cloudinary' });
+        }
+        const buffer = Buffer.from(await response.arrayBuffer());
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename="${safeName} - Resume.pdf"`);
+        res.send(buffer);
+      } else if (student.file_name || student.resume_file_name) {
+        const fs = require('fs');
+        const path = require('path');
+        const fileName = student.file_name || student.resume_file_name;
+        const filePath = path.join(__dirname, '..', 'uploads', 'resumes', fileName);
+        if (!fs.existsSync(filePath)) {
+          return res.status(404).json({ message: 'Local resume file not found' });
+        }
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename="${safeName} - Resume.pdf"`);
+        res.sendFile(filePath);
+      } else {
+        return res.status(404).json({ message: 'Candidate resume not found in this collection' });
+      }
+    } catch (error) {
+      console.error('Public download resume error:', error);
+      res.status(500).json({ message: 'Server error' });
+    }
+  },
+
+  /**
+   * GET /api/public/resumes/:token/download-bulk
+   * Public download endpoint for bulk resumes ZIP.
+   */
+  async downloadBulkResumesPublic(req, res) {
+    try {
+      const { token } = req.params;
+      const studentIdsString = req.query.student_ids;
+
+      const ResumeCollection = require('../models/ResumeCollection');
+      const collection = await ResumeCollection.getByToken(token);
+      if (!collection) {
+        return res.status(404).json({ message: 'Invalid or expired collection token' });
+      }
+
+      let studentsToZip = collection.students;
+      if (studentIdsString) {
+        const studentIds = studentIdsString.split(',').map(Number);
+        studentsToZip = collection.students.filter(s => studentIds.includes(s.id));
+      }
+
+      if (studentsToZip.length === 0) {
+        return res.status(400).json({ message: 'No candidates selected for download' });
+      }
+
+      const zip = new JSZip();
+      const promises = studentsToZip.map(async (student) => {
+        if (!student.cloudinary_url && !student.file_name && !student.resume_file_name) return;
+        try {
+          let buffer;
+          if (student.cloudinary_url) {
+            const fileResp = await fetch(student.cloudinary_url);
+            if (!fileResp.ok) return;
+            buffer = Buffer.from(await fileResp.arrayBuffer());
+          } else {
+            const fs = require('fs');
+            const path = require('path');
+            const fileName = student.file_name || student.resume_file_name;
+            const filePath = path.join(__dirname, '..', 'uploads', 'resumes', fileName);
+            if (!fs.existsSync(filePath)) return;
+            buffer = fs.readFileSync(filePath);
+          }
+          const safeName = student.name.replace(/[^a-zA-Z0-9\s-]/g, '').trim() || `Student-${student.id}`;
+          zip.file(`${safeName} - Resume.pdf`, buffer);
+        } catch (err) {
+          console.error(`Error zipping public resume for ${student.name}:`, err);
+        }
+      });
+
+      await Promise.all(promises);
+
+      const zipBuffer = await zip.generateAsync({ type: 'nodebuffer' });
+      const zipName = collection.company_name 
+        ? `${collection.company_name.replace(/[^a-zA-Z0-9\s-]/g, '').trim()}_Candidate_Resumes.zip`
+        : 'Candidate_Resumes.zip';
+
+      res.setHeader('Content-Type', 'application/zip');
+      res.setHeader('Content-Disposition', `attachment; filename="${zipName}"`);
+      res.send(zipBuffer);
+    } catch (error) {
+      console.error('Public download bulk resumes error:', error);
       res.status(500).json({ message: 'Server error' });
     }
   }

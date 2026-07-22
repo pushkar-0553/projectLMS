@@ -233,7 +233,23 @@ export const resumeAPI = {
   deleteCollection: (id) => api.delete(`/resume-collections/${id}`),
 
   // Public
-  getPublicCollection: (token) => api.get(`/public/resumes/${token}`)
+  getPublicCollection: (token) => api.get(`/public/resumes/${token}`),
+  submitPublicReview: (token, data) => api.post(`/public/resumes/${token}/review`, data),
+
+  // Helpers for direct download URLs
+  getSingleDownloadUrl: (studentId) => {
+    const token = localStorage.getItem('token');
+    return `${API_BASE_URL}/resumes/download/${studentId}${token ? `?token=${token}` : ''}`;
+  },
+  getBulkDownloadUrl: (studentIds) => {
+    const token = localStorage.getItem('token');
+    return `${API_BASE_URL}/resumes/download-bulk?student_ids=${studentIds.join(',')}${token ? `&token=${token}` : ''}`;
+  },
+  getPublicSingleDownloadUrl: (token, studentId) => `${API_BASE_URL}/public/resumes/${token}/download/${studentId}`,
+  getPublicBulkDownloadUrl: (token, studentIds) => {
+    const idsQuery = studentIds && studentIds.length > 0 ? `?student_ids=${studentIds.join(',')}` : '';
+    return `${API_BASE_URL}/public/resumes/${token}/download-bulk${idsQuery}`;
+  }
 };
 
 export default api;
