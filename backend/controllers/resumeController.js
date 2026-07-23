@@ -2,35 +2,76 @@ const Resume = require('../models/Resume');
 const cloudinaryService = require('../services/cloudinaryService');
 const pool = require('../config/db');
 const JSZip = require('jszip');
+const fs = require('fs');
+const path = require('path');
+
+// Helper to save file locally on disk if Cloudinary is unavailable or fails
+const saveLocalResume = (file) => {
+  const uploadsDir = path.join(__dirname, '..', 'uploads', 'resumes');
+  if (!fs.existsSync(uploadsDir)) {
+    fs.mkdirSync(uploadsDir, { recursive: true });
+  }
+  const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+  const localFileName = `resume-${uniqueSuffix}.pdf`;
+  const filePath = path.join(uploadsDir, localFileName);
+  
+  fs.writeFileSync(filePath, file.buffer);
+  
+  return {
+    file_name: localFileName,
+    original_filename: file.originalname || localFileName,
+    relative_path: `uploads/resumes/${localFileName}`
+  };
+};
 
 const resumeController = {
   /**
    * POST /api/resumes/upload
-   * Handles resume file upload (PDF format, max 10MB) to Cloudinary.
+   * Handles resume file upload (PDF format, max 10MB) to Cloudinary or local fallback.
    */
   async uploadResume(req, res) {
     try {
-      const studentId = req.body.student_id || req.user?.id;
+      const rawStudentId = req.body.student_id || req.user?.id;
+      const studentId = parseInt(rawStudentId, 10);
       const { resume_title } = req.body;
 
-      if (!studentId) {
-        return res.status(400).json({ message: 'student_id is required' });
+      if (!studentId || isNaN(studentId)) {
+        return res.status(400).json({ message: 'Valid student_id is required' });
       }
 
       if (!req.file) {
         return res.status(400).json({ message: 'No resume PDF file uploaded' });
       }
 
-      // Perform Cloudinary upload
-      const uploadResult = await cloudinaryService.uploadResume(req.file);
+      let cloudinaryPublicId = null;
+      let cloudinaryUrl = null;
+      let fileName = req.file.originalname;
+
+      // Perform Cloudinary upload if configured, else fall back to local disk storage
+      if (cloudinaryService.isConfigured()) {
+        try {
+          const uploadResult = await cloudinaryService.uploadResume(req.file);
+          cloudinaryPublicId = uploadResult.public_id;
+          cloudinaryUrl = uploadResult.secure_url;
+          fileName = uploadResult.original_filename;
+        } catch (cloudinaryError) {
+          console.warn('Cloudinary upload failed, using local disk fallback:', cloudinaryError.message);
+          const localResult = saveLocalResume(req.file);
+          fileName = localResult.file_name;
+        }
+      } else {
+        console.log('Cloudinary not configured on host. Saving resume locally...');
+        const localResult = saveLocalResume(req.file);
+        fileName = localResult.file_name;
+      }
 
       // Create db record
       const result = await Resume.create({
         studentId,
         resumeTitle: resume_title || 'Resume',
-        resumeFileName: uploadResult.original_filename,
-        cloudinaryPublicId: uploadResult.public_id,
-        cloudinaryUrl: uploadResult.secure_url
+        resumeFileName: fileName,
+        cloudinaryPublicId,
+        cloudinaryUrl
       });
 
       res.status(201).json({
@@ -39,16 +80,16 @@ const resumeController = {
           id: result.id,
           student_id: studentId,
           resume_title: resume_title || 'Resume',
-          file_name: uploadResult.original_filename,
-          cloudinary_public_id: uploadResult.public_id,
-          cloudinary_url: uploadResult.secure_url,
+          file_name: fileName,
+          cloudinary_public_id: cloudinaryPublicId,
+          cloudinary_url: cloudinaryUrl,
           version: result.version,
           is_latest: true
         }
       });
     } catch (error) {
       console.error('Upload resume error:', error);
-      res.status(500).json({ message: 'Server error' });
+      res.status(500).json({ message: error.message || 'Server error uploading resume', error: error.message });
     }
   },
 
@@ -66,8 +107,12 @@ const resumeController = {
       }
 
       // Delete from Cloudinary
-      if (resume.cloudinary_public_id) {
-        await cloudinaryService.deleteResume(resume.cloudinary_public_id);
+      if (resume.cloudinary_public_id && cloudinaryService.isConfigured()) {
+        try {
+          await cloudinaryService.deleteResume(resume.cloudinary_public_id);
+        } catch (delErr) {
+          console.warn('Cloudinary deletion failed:', delErr.message);
+        }
       }
 
       // Delete from DB
@@ -82,7 +127,7 @@ const resumeController = {
 
   /**
    * PUT /api/resumes/:id
-   * Replaces a resume (deletes old Cloudinary file, uploads new PDF, keeps version history).
+   * Replaces a resume (deletes old file, uploads new PDF, keeps version history).
    */
   async replaceResume(req, res) {
     try {
@@ -98,21 +143,42 @@ const resumeController = {
         return res.status(404).json({ message: 'Resume not found' });
       }
 
-      // Delete old file from Cloudinary
-      if (oldResume.cloudinary_public_id) {
-        await cloudinaryService.deleteResume(oldResume.cloudinary_public_id);
+      // Delete old file from Cloudinary if existed
+      if (oldResume.cloudinary_public_id && cloudinaryService.isConfigured()) {
+        try {
+          await cloudinaryService.deleteResume(oldResume.cloudinary_public_id);
+        } catch (delErr) {
+          console.warn('Could not delete old Cloudinary resume:', delErr.message);
+        }
       }
 
-      // Upload new file to Cloudinary
-      const uploadResult = await cloudinaryService.uploadResume(req.file);
+      let cloudinaryPublicId = null;
+      let cloudinaryUrl = null;
+      let fileName = req.file.originalname;
+
+      if (cloudinaryService.isConfigured()) {
+        try {
+          const uploadResult = await cloudinaryService.uploadResume(req.file);
+          cloudinaryPublicId = uploadResult.public_id;
+          cloudinaryUrl = uploadResult.secure_url;
+          fileName = uploadResult.original_filename;
+        } catch (cloudinaryError) {
+          console.warn('Cloudinary replace upload failed, using local disk fallback:', cloudinaryError.message);
+          const localResult = saveLocalResume(req.file);
+          fileName = localResult.file_name;
+        }
+      } else {
+        const localResult = saveLocalResume(req.file);
+        fileName = localResult.file_name;
+      }
 
       // Save as a new version in the database
       const result = await Resume.create({
         studentId: oldResume.student_id,
         resumeTitle: resume_title || oldResume.resume_title || 'Resume',
-        resumeFileName: uploadResult.original_filename,
-        cloudinaryPublicId: uploadResult.public_id,
-        cloudinaryUrl: uploadResult.secure_url
+        resumeFileName: fileName,
+        cloudinaryPublicId,
+        cloudinaryUrl
       });
 
       res.json({
@@ -121,16 +187,16 @@ const resumeController = {
           id: result.id,
           student_id: oldResume.student_id,
           resume_title: resume_title || oldResume.resume_title || 'Resume',
-          file_name: uploadResult.original_filename,
-          cloudinary_public_id: uploadResult.public_id,
-          cloudinary_url: uploadResult.secure_url,
+          file_name: fileName,
+          cloudinary_public_id: cloudinaryPublicId,
+          cloudinary_url: cloudinaryUrl,
           version: result.version,
           is_latest: true
         }
       });
     } catch (error) {
       console.error('Replace resume error:', error);
-      res.status(500).json({ message: 'Server error' });
+      res.status(500).json({ message: error.message || 'Server error replacing resume', error: error.message });
     }
   },
 

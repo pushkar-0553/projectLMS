@@ -3,16 +3,33 @@ const router = express.Router();
 const multer = require('multer');
 const resumeController = require('../controllers/resumeController');
 const resumeCollectionController = require('../controllers/resumeCollectionController');
+const { protect } = require('../middleware/authMiddleware');
+
+// Optional authentication middleware to populate req.user if token is sent
+const optionalAuth = (req, res, next) => {
+  const authHeader = req.headers['authorization'];
+  let token = authHeader && authHeader.split(' ')[1];
+  if (!token && req.query.token) token = req.query.token;
+  if (!token) return next();
+
+  protect(req, res, (err) => {
+    // Continue even if token fails, but req.user will be populated if valid
+    next();
+  });
+};
 
 // Multer memory storage configuration for PDFs (max 10MB)
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
   fileFilter: (req, file, cb) => {
-    if (file.mimetype !== 'application/pdf') {
-      return cb(new Error('Only PDF format is accepted'), false);
+    const mimetype = (file.mimetype || '').toLowerCase();
+    const originalName = (file.originalname || '').toLowerCase();
+
+    if (mimetype.includes('pdf') || mimetype === 'application/octet-stream' || originalName.endsWith('.pdf')) {
+      return cb(null, true);
     }
-    cb(null, true);
+    return cb(new Error('Only PDF format is accepted'), false);
   }
 });
 
@@ -34,13 +51,13 @@ const handleUpload = (req, res, next) => {
    ========================================================================= */
 
 // Student uploads a resume
-router.post('/resumes/upload', handleUpload, resumeController.uploadResume);
+router.post('/resumes/upload', optionalAuth, handleUpload, resumeController.uploadResume);
 
 // Delete a resume
-router.delete('/resumes/:id', resumeController.deleteResume);
+router.delete('/resumes/:id', optionalAuth, resumeController.deleteResume);
 
 // Replace a resume
-router.put('/resumes/:id', handleUpload, resumeController.replaceResume);
+router.put('/resumes/:id', optionalAuth, handleUpload, resumeController.replaceResume);
 
 // Download routes (pre-renamed and bundled ZIP files)
 router.get('/resumes/download-bulk', resumeController.downloadBulkResumes);

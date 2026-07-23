@@ -5,6 +5,17 @@ const cloudinary = require('../config/cloudinary');
  */
 const cloudinaryService = {
   /**
+   * Helper to check if Cloudinary is fully configured
+   */
+  isConfigured() {
+    return !!(
+      process.env.CLOUDINARY_CLOUD_NAME &&
+      process.env.CLOUDINARY_API_KEY &&
+      process.env.CLOUDINARY_API_SECRET
+    );
+  },
+
+  /**
    * Uploads a resume PDF buffer directly to Cloudinary.
    * Uses resource_type = raw because resumes are PDF files.
    * 
@@ -13,6 +24,10 @@ const cloudinaryService = {
    */
   uploadResume(file) {
     return new Promise((resolve, reject) => {
+      if (!this.isConfigured()) {
+        return reject(new Error('Cloudinary is not configured on this host (missing credentials)'));
+      }
+
       if (!file || !file.buffer) {
         return reject(new Error('No file buffer provided for Cloudinary upload'));
       }
