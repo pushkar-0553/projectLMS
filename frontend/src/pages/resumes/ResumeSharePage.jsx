@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import { resumeAPI, resolveAssetUrl } from '../../services/api';
 import ResumeViewer from '../../components/resumes/ResumeViewer';
@@ -11,6 +11,12 @@ const ResumeSharePage = () => {
   const [collection, setCollection] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+
+  // Search & Filter states for public collection page (0% server load)
+  const [searchQuery, setSearchQuery] = useState('');
+  const [domainFilter, setDomainFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
+  const [passoutYearFilter, setPassoutYearFilter] = useState('');
 
   // PDF Viewer state
   const [viewerStudent, setViewerStudent] = useState(null);
@@ -32,17 +38,84 @@ const ResumeSharePage = () => {
     loadCollection();
   }, [token]);
 
+  // Extract unique domains and passout years / batches from collection candidates
+  const uniqueDomains = useMemo(() => {
+    if (!collection?.students) return [];
+    return [...new Set(collection.students.map(s => s.domain).filter(Boolean))].sort();
+  }, [collection]);
+
+  const uniquePassoutYears = useMemo(() => {
+    if (!collection?.students) return [];
+    return [...new Set(collection.students.map(s => s.passout_year || s.batch).filter(Boolean))].sort();
+  }, [collection]);
+
+  // Efficient in-memory filtered candidate list (0% server load)
+  const filteredStudents = useMemo(() => {
+    if (!collection?.students) return [];
+    let list = collection.students;
+
+    // 1. Comprehensive multi-field text search
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      list = list.filter(s =>
+        (s.name && s.name.toLowerCase().includes(q)) ||
+        (s.email && s.email.toLowerCase().includes(q)) ||
+        (s.mobile && s.mobile.toLowerCase().includes(q)) ||
+        (s.skills && s.skills.toLowerCase().includes(q)) ||
+        (s.college && s.college.toLowerCase().includes(q)) ||
+        (s.current_location && s.current_location.toLowerCase().includes(q)) ||
+        (s.passout_year && String(s.passout_year).toLowerCase().includes(q)) ||
+        (s.domain && s.domain.toLowerCase().includes(q)) ||
+        (s.batch && s.batch.toLowerCase().includes(q))
+      );
+    }
+
+    // 2. Domain Filter
+    if (domainFilter) {
+      list = list.filter(s => s.domain === domainFilter);
+    }
+
+    // 3. Evaluation Status Filter
+    if (statusFilter) {
+      if (statusFilter === 'pending') {
+        list = list.filter(s => !s.review_status || s.review_status === 'pending');
+      } else {
+        list = list.filter(s => s.review_status === statusFilter);
+      }
+    }
+
+    // 4. Passout Year / Batch Filter
+    if (passoutYearFilter) {
+      list = list.filter(s => String(s.passout_year) === passoutYearFilter || String(s.batch) === passoutYearFilter);
+    }
+
+    return list;
+  }, [collection, searchQuery, domainFilter, statusFilter, passoutYearFilter]);
+
+  const allSelected = filteredStudents.length > 0 && selectedStudentIds.length === filteredStudents.length;
+  const studentsList = Array.isArray(collection?.students) ? collection.students : [];
+
   const loadCollection = async () => {
     try {
       setLoading(true);
       setError('');
+      if (!token) {
+        setError('No share token provided in URL.');
+        return;
+      }
       const response = await resumeAPI.getPublicCollection(token);
-      setCollection(response.data);
-      if (response.data && response.data.title) {
-        document.title = `Candidate Resumes - ${response.data.title} | VCUBE Placements`;
+      if (!response.data || !response.data.id) {
+        setError('This resume collection is invalid, has expired, or is currently inactive.');
+        setCollection(null);
+      } else {
+        setCollection(response.data);
+        if (response.data.title) {
+          document.title = `Candidate Resumes - ${response.data.title} | VCUBE Placements`;
+        }
       }
     } catch (err) {
-      console.error(err);
+      console.error('Error fetching collection:', err);
+      setCollection(null);
       setError(
         err.response?.data?.message ||
         'This resume collection is invalid, has expired, or is currently inactive.'
@@ -62,7 +135,7 @@ const ResumeSharePage = () => {
 
   // Bulk ZIP download hitting backend zip builder
   const handleDownloadBulkZIP = () => {
-    if (!collection) return;
+    if (!collection || !collection.students) return;
 
     // If specific candidates are checked, download only those. Otherwise, download all in the collection.
     const idsToDownload = selectedStudentIds.length > 0
@@ -79,8 +152,6 @@ const ResumeSharePage = () => {
     setSelectedStudentIds([]); // Clear selection
   };
 
-
-
   // Submit recruiter evaluation review
   const handleSaveEvaluation = async (e) => {
     e.preventDefault();
@@ -95,7 +166,8 @@ const ResumeSharePage = () => {
       });
 
       // Update local state details in-place
-      const updatedStudents = collection.students.map(s => {
+      const studentsArr = collection.students || [];
+      const updatedStudents = studentsArr.map(s => {
         if (s.id === evaluationStudent.id) {
           return {
             ...s,
@@ -152,20 +224,18 @@ const ResumeSharePage = () => {
     );
   }
 
-  if (error) {
+  if (error || !collection) {
     return (
       <div style={styles.errorContainer}>
         <div style={styles.errorCard}>
           <div style={styles.errorIcon}>⚠️</div>
           <h2 style={styles.errorTitle}>Access Link Expired or Invalid</h2>
-          <p style={styles.errorText}>{error}</p>
+          <p style={styles.errorText}>{error || 'This resume collection is invalid, has expired, or is currently inactive.'}</p>
           <p style={styles.errorSubtext}>Please contact your LMS coordinator or placement manager for an active sharing link.</p>
         </div>
       </div>
     );
   }
-
-  const allSelected = collection.students.length > 0 && selectedStudentIds.length === collection.students.length;
 
   return (
     <div style={styles.page}>
@@ -195,17 +265,17 @@ const ResumeSharePage = () => {
         {/* Collection info header card */}
         <div style={styles.headerCard}>
           <div style={styles.metaInfo}>
-            <h1 style={styles.collectionTitle}>{collection.title}</h1>
+            <h1 style={styles.collectionTitle}>{collection?.title || 'Candidate Collection'}</h1>
             <div style={styles.metaRow}>
               <span style={styles.metaItem}>
-                📅 Created: {new Date(collection.created_at).toLocaleDateString('en-IN', {
+                📅 Created: {collection?.created_at ? new Date(collection.created_at).toLocaleDateString('en-IN', {
                   day: 'numeric',
                   month: 'short',
                   year: 'numeric'
-                })}
+                }) : 'N/A'}
               </span>
               <span style={styles.metaItem}>
-                👥 Candidates: <strong>{collection.students.length}</strong>
+                👥 Candidates: <strong>{studentsList.length}</strong>
               </span>
             </div>
 
@@ -279,6 +349,92 @@ const ResumeSharePage = () => {
           <div style={styles.headerAccent} />
         </div>
 
+        {/* Search & Filter Bar for HR / Public Catalog (0% Server Load) */}
+        {studentsList.length > 0 && (
+          <div style={styles.searchFilterCard}>
+            <div style={styles.searchGroup}>
+              <span style={styles.searchIcon}>🔍</span>
+              <input
+                type="text"
+                placeholder="Search candidates by name, email, skills, college, location, passout year..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                style={styles.searchInput}
+              />
+            </div>
+
+            <div style={styles.filtersGroup}>
+              {/* Domain Filter */}
+              <div style={styles.filterWrapper}>
+                <label style={styles.filterLabel}>Domain</label>
+                <select
+                  value={domainFilter}
+                  onChange={(e) => setDomainFilter(e.target.value)}
+                  style={styles.select}
+                >
+                  <option value="">All Domains</option>
+                  {uniqueDomains.map(d => (
+                    <option key={d} value={d}>{d}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Evaluation Status Filter */}
+              <div style={styles.filterWrapper}>
+                <label style={styles.filterLabel}>Evaluation Status</label>
+                <select
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value)}
+                  style={styles.select}
+                >
+                  <option value="">All Statuses</option>
+                  <option value="pending">Pending 🕒</option>
+                  <option value="selected">Selected ✅</option>
+                  <option value="unselected">Unselected ❌</option>
+                  <option value="go_to_next">Go To Next ➡️</option>
+                </select>
+              </div>
+
+              {/* Passout Year / Batch Filter */}
+              {uniquePassoutYears.length > 0 && (
+                <div style={styles.filterWrapper}>
+                  <label style={styles.filterLabel}>Passout / Batch</label>
+                  <select
+                    value={passoutYearFilter}
+                    onChange={(e) => setPassoutYearFilter(e.target.value)}
+                    style={styles.select}
+                  >
+                    <option value="">All Passout / Batches</option>
+                    {uniquePassoutYears.map(y => (
+                      <option key={y} value={y}>{y}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {/* Reset Button */}
+              {(searchQuery || domainFilter || statusFilter || passoutYearFilter) && (
+                <button
+                  onClick={() => {
+                    setSearchQuery('');
+                    setDomainFilter('');
+                    setStatusFilter('');
+                    setPassoutYearFilter('');
+                  }}
+                  style={styles.resetBtn}
+                >
+                  Reset Filters 🔄
+                </button>
+              )}
+
+              {/* Result Count Pill */}
+              <span style={styles.matchCountPill}>
+                Showing <strong>{filteredStudents.length}</strong> of <strong>{studentsList.length}</strong> candidates
+              </span>
+            </div>
+          </div>
+        )}
+
         {/* Student Table */}
         <div style={styles.tableCard}>
           <div style={styles.tableWrapper}>
@@ -291,7 +447,7 @@ const ResumeSharePage = () => {
                       checked={allSelected}
                       onChange={(e) => {
                         if (e.target.checked) {
-                          setSelectedStudentIds(collection.students.map(s => s.id));
+                          setSelectedStudentIds(filteredStudents.map(s => s.id));
                         } else {
                           setSelectedStudentIds([]);
                         }
@@ -309,14 +465,16 @@ const ResumeSharePage = () => {
                 </tr>
               </thead>
               <tbody>
-                {collection.students.length === 0 ? (
+                {filteredStudents.length === 0 ? (
                   <tr>
                     <td colSpan="8" style={styles.emptyCell}>
-                      No candidates mapped in this collection yet.
+                      {studentsList.length === 0 
+                        ? 'No candidates mapped in this collection yet.'
+                        : 'No candidates match your current search or filter criteria.'}
                     </td>
                   </tr>
                 ) : (
-                  collection.students.map((student) => (
+                  filteredStudents.map((student) => (
                     <tr key={student.id} style={styles.tr}>
                       <td style={styles.tdCheck}>
                         <input

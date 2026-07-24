@@ -105,14 +105,21 @@ const ResumeDashboard = () => {
   const applyFiltersAndSearch = () => {
     let result = [...students];
 
-    // 1. Search Query
+    // 1. Multi-Field Comprehensive Search Query
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       result = result.filter(
         s =>
           (s.name && s.name.toLowerCase().includes(q)) ||
           (s.email && s.email.toLowerCase().includes(q)) ||
-          (s.mobile && s.mobile.toLowerCase().includes(q))
+          (s.mobile && s.mobile.toLowerCase().includes(q)) ||
+          (s.skills && s.skills.toLowerCase().includes(q)) ||
+          (s.college && s.college.toLowerCase().includes(q)) ||
+          (s.current_location && s.current_location.toLowerCase().includes(q)) ||
+          (s.passout_year && String(s.passout_year).toLowerCase().includes(q)) ||
+          (s.domain && s.domain.toLowerCase().includes(q)) ||
+          (s.batch && s.batch.toLowerCase().includes(q)) ||
+          (s.batch_name && s.batch_name.toLowerCase().includes(q))
       );
     }
 

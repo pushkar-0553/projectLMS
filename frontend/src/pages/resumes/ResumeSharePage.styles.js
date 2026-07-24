@@ -540,6 +540,96 @@ const styles = {
     fontWeight: '700',
     cursor: 'pointer',
     transition: 'background 0.2s'
+  },
+  
+  // Search & Filter bar styles for public collection page
+  searchFilterCard: {
+    background: '#ffffff',
+    border: '1px solid #e2e8f0',
+    borderRadius: '16px',
+    padding: '18px 20px',
+    marginBottom: '20px',
+    boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.03)',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '14px'
+  },
+  searchGroup: {
+    position: 'relative',
+    display: 'flex',
+    alignItems: 'center',
+    width: '100%'
+  },
+  searchIcon: {
+    position: 'absolute',
+    left: '14px',
+    fontSize: '16px',
+    color: '#94a3b8'
+  },
+  searchInput: {
+    width: '100%',
+    padding: '12px 14px 12px 42px',
+    fontSize: '14px',
+    borderRadius: '10px',
+    border: '1px solid #cbd5e1',
+    outline: 'none',
+    transition: 'border-color 0.2s'
+  },
+  filtersGroup: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: '12px',
+    alignItems: 'center'
+  },
+  filterWrapper: {
+    flex: '1 1 160px',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '4px'
+  },
+  filterLabel: {
+    fontSize: '11px',
+    fontWeight: '700',
+    color: '#64748b',
+    textTransform: 'uppercase',
+    letterSpacing: '0.04em'
+  },
+  select: {
+    padding: '9px 12px',
+    fontSize: '13px',
+    borderRadius: '8px',
+    border: '1px solid #cbd5e1',
+    outline: 'none',
+    background: '#ffffff',
+    color: '#1e293b',
+    cursor: 'pointer'
+  },
+  resetBtn: {
+    padding: '9px 14px',
+    fontSize: '12px',
+    fontWeight: '600',
+    color: '#ef4444',
+    background: '#fee2e2',
+    border: '1px solid #fca5a5',
+    borderRadius: '8px',
+    cursor: 'pointer',
+    height: '36px',
+    alignSelf: 'flex-end',
+    whiteSpace: 'nowrap'
+  },
+  matchCountPill: {
+    marginLeft: 'auto',
+    fontSize: '12px',
+    fontWeight: '600',
+    color: '#475569',
+    background: '#f1f5f9',
+    padding: '6px 12px',
+    borderRadius: '20px',
+    border: '1px solid #e2e8f0',
+    alignSelf: 'flex-end',
+    height: '36px',
+    display: 'flex',
+    alignItems: 'center'
   }
 };
 

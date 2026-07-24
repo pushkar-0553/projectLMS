@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
 import { resumeAPI } from '../../services/api';
+import ManageCollectionModal from './ManageCollectionModal';
 
 const CollectionsList = ({ collections = [], onRefresh }) => {
   const [copiedId, setCopiedId] = useState(null);
+  const [selectedManageCollectionId, setSelectedManageCollectionId] = useState(null);
 
   const handleCopy = (shareToken, id) => {
     const origin = window.location.origin;
@@ -51,13 +53,22 @@ const CollectionsList = ({ collections = [], onRefresh }) => {
                     👤 {col.student_count} {col.student_count === 1 ? 'candidate' : 'candidates'}
                   </span>
                 </div>
-                <button
-                  onClick={() => handleDelete(col.id)}
-                  style={styles.deleteBtn}
-                  title="Delete collection"
-                >
-                  ✕
-                </button>
+                <div style={styles.headerActions}>
+                  <button
+                    onClick={() => setSelectedManageCollectionId(col.id)}
+                    style={styles.manageBtn}
+                    title="Add or remove candidates in this link"
+                  >
+                    ✏️ Manage Candidates
+                  </button>
+                  <button
+                    onClick={() => handleDelete(col.id)}
+                    style={styles.deleteBtn}
+                    title="Delete collection"
+                  >
+                    ✕
+                  </button>
+                </div>
               </div>
 
               {/* Job Info row */}
@@ -117,6 +128,16 @@ const CollectionsList = ({ collections = [], onRefresh }) => {
           );
         })}
       </div>
+
+      {selectedManageCollectionId && (
+        <ManageCollectionModal
+          collectionId={selectedManageCollectionId}
+          onClose={() => setSelectedManageCollectionId(null)}
+          onSuccess={() => {
+            if (onRefresh) onRefresh();
+          }}
+        />
+      )}
     </div>
   );
 };
@@ -166,6 +187,22 @@ const styles = {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'flex-start'
+  },
+  headerActions: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px'
+  },
+  manageBtn: {
+    border: '1px solid #cbd5e1',
+    background: '#ffffff',
+    color: '#475569',
+    fontSize: '11px',
+    fontWeight: '600',
+    borderRadius: '6px',
+    padding: '3px 8px',
+    cursor: 'pointer',
+    transition: 'all 0.15s'
   },
   titleSec: {
     display: 'flex',

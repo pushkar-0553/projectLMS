@@ -166,6 +166,56 @@ class ResumeCollection {
   }
 
   /**
+   * Add new student candidates to an existing collection link.
+   * Uses INSERT IGNORE to prevent duplicate entries cleanly.
+   */
+  static async addStudents(collectionId, studentIds) {
+    if (!studentIds || !Array.isArray(studentIds) || studentIds.length === 0) {
+      return false;
+    }
+
+    const placeholders = studentIds.map(() => '(?, ?)').join(', ');
+    const values = [];
+    studentIds.forEach(studentId => {
+      values.push(collectionId, studentId);
+    });
+
+    const [result] = await pool.execute(
+      `INSERT IGNORE INTO resume_collection_students (collection_id, student_id)
+       VALUES ${placeholders}`,
+      values
+    );
+    return result.affectedRows;
+  }
+
+  /**
+   * Remove a candidate from a collection link.
+   */
+  static async removeStudent(collectionId, studentId) {
+    const [result] = await pool.execute(
+      'DELETE FROM resume_collection_students WHERE collection_id = ? AND student_id = ?',
+      [collectionId, studentId]
+    );
+    return result.affectedRows > 0;
+  }
+
+  /**
+   * Update collection metadata.
+   */
+  static async update(collectionId, { title, companyName, salary, jd }) {
+    const [result] = await pool.execute(
+      `UPDATE resume_collections
+       SET title = COALESCE(?, title),
+           company_name = COALESCE(?, company_name),
+           salary = COALESCE(?, salary),
+           jd = COALESCE(?, jd)
+       WHERE id = ?`,
+      [title || null, companyName || null, salary || null, jd || null, collectionId]
+    );
+    return result.affectedRows > 0;
+  }
+
+  /**
    * Delete a collection.
    */
   static async delete(id) {

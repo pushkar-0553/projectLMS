@@ -99,6 +99,15 @@ router.get('/resume-collections', resumeCollectionController.getAllCollections);
 // Get collection detail by ID
 router.get('/resume-collections/:id', resumeCollectionController.getCollectionDetail);
 
+// Update collection metadata
+router.put('/resume-collections/:id', resumeCollectionController.updateCollection);
+
+// Add students to existing collection link
+router.post('/resume-collections/:id/students', resumeCollectionController.addStudentsToCollection);
+
+// Remove student from existing collection link
+router.delete('/resume-collections/:id/students/:studentId', resumeCollectionController.removeStudentFromCollection);
+
 // Delete collection
 router.delete('/resume-collections/:id', resumeCollectionController.deleteCollection);
 

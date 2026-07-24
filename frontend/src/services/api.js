@@ -230,6 +230,9 @@ export const resumeAPI = {
   createCollection: (data) => api.post('/resume-collections', data),
   getAllCollections: () => api.get('/resume-collections'),
   getCollectionDetail: (id) => api.get(`/resume-collections/${id}`),
+  updateCollection: (id, data) => api.put(`/resume-collections/${id}`, data),
+  addStudentsToCollection: (id, studentIds) => api.post(`/resume-collections/${id}/students`, { student_ids: studentIds }),
+  removeStudentFromCollection: (id, studentId) => api.delete(`/resume-collections/${id}/students/${studentId}`),
   deleteCollection: (id) => api.delete(`/resume-collections/${id}`),
 
   // Public

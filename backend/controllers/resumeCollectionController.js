@@ -171,6 +171,99 @@ const resumeCollectionController = {
       console.error('Submit public review error:', error);
       res.status(500).json({ message: 'Server error' });
     }
+  },
+
+  /**
+   * POST /api/resume-collections/:id/students
+   * Adds new candidates to an existing collection link.
+   */
+  async addStudentsToCollection(req, res) {
+    try {
+      const { id } = req.params;
+      const { student_ids } = req.body;
+
+      if (!student_ids || !Array.isArray(student_ids) || student_ids.length === 0) {
+        return res.status(400).json({ message: 'student_ids must be a non-empty array' });
+      }
+
+      const collection = await ResumeCollection.getById(id);
+      if (!collection) {
+        return res.status(404).json({ message: 'Collection not found' });
+      }
+
+      const addedCount = await ResumeCollection.addStudents(id, student_ids);
+      const updatedCollection = await ResumeCollection.getById(id);
+
+      res.json({
+        message: `${addedCount} student(s) added to collection`,
+        collection: updatedCollection
+      });
+    } catch (error) {
+      console.error('Add students to collection error:', error);
+      res.status(500).json({ message: 'Server error adding candidates to collection' });
+    }
+  },
+
+  /**
+   * DELETE /api/resume-collections/:id/students/:studentId
+   * Removes a candidate from an existing collection link.
+   */
+  async removeStudentFromCollection(req, res) {
+    try {
+      const { id, studentId } = req.params;
+
+      const collection = await ResumeCollection.getById(id);
+      if (!collection) {
+        return res.status(404).json({ message: 'Collection not found' });
+      }
+
+      const removed = await ResumeCollection.removeStudent(id, studentId);
+      if (!removed) {
+        return res.status(400).json({ message: 'Candidate was not found in this collection' });
+      }
+
+      const updatedCollection = await ResumeCollection.getById(id);
+
+      res.json({
+        message: 'Candidate removed from collection',
+        collection: updatedCollection
+      });
+    } catch (error) {
+      console.error('Remove student from collection error:', error);
+      res.status(500).json({ message: 'Server error removing candidate from collection' });
+    }
+  },
+
+  /**
+   * PUT /api/resume-collections/:id
+   * Updates collection metadata (title, company_name, salary, jd).
+   */
+  async updateCollection(req, res) {
+    try {
+      const { id } = req.params;
+      const { title, company_name, salary, jd } = req.body;
+
+      const collection = await ResumeCollection.getById(id);
+      if (!collection) {
+        return res.status(404).json({ message: 'Collection not found' });
+      }
+
+      await ResumeCollection.update(id, {
+        title,
+        companyName: company_name,
+        salary,
+        jd
+      });
+
+      const updatedCollection = await ResumeCollection.getById(id);
+      res.json({
+        message: 'Collection updated successfully',
+        collection: updatedCollection
+      });
+    } catch (error) {
+      console.error('Update collection error:', error);
+      res.status(500).json({ message: 'Server error updating collection' });
+    }
   }
 };
 
