@@ -18,16 +18,34 @@ const api = axios.create({
 
 api.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem('token')
+    const token = localStorage.getItem('token');
     if (token) {
-      config.headers.Authorization = `Bearer ${token}`
+      config.headers.Authorization = `Bearer ${token}`;
     }
-    return config
+
+    // Determine active course slug from URL or localStorage
+    const pathParts = window.location.pathname.split('/').filter(Boolean);
+    const reserved = [
+      'login', 'super-admin', 'resumes', 'public', 'users', 'admin',
+      'coordinator', 'student', 'dashboard', 'my-progress', 'academic-progress',
+      'project-learning', 'guided-learning', 'messages', 'notifications',
+      'change-password', 'faculty'
+    ];
+    if (pathParts.length > 0 && !reserved.includes(pathParts[0])) {
+      config.headers['X-Course-Slug'] = pathParts[0];
+    } else {
+      const activeSlug = localStorage.getItem('activeCourseSlug');
+      if (activeSlug) {
+        config.headers['X-Course-Slug'] = activeSlug;
+      }
+    }
+
+    return config;
   },
   (error) => {
-    return Promise.reject(error)
+    return Promise.reject(error);
   }
-)
+);
 
 api.interceptors.response.use(
   (response) => response,
@@ -216,8 +234,8 @@ export const resumeAPI = {
   }),
   getLatestResume: (studentId) => api.get(`/resumes/student/${studentId}`),
   getHistory: (studentId) => api.get(`/resumes/history/${studentId}`),
-  getAllResumes: () => api.get('/resumes'),
-  searchResumes: (query) => api.get('/resumes/search', { params: { query } }),
+  getAllResumes: (params) => api.get('/resumes', { params }),
+  searchResumes: (query, params) => api.get('/resumes/search', { params: { query, ...params } }),
   filterResumes: (filters) => api.get('/resumes/filter', { params: filters }),
   updatePlacementInfo: (studentId, data) => api.put(`/resumes/placement/${studentId}`, data),
   
@@ -228,7 +246,7 @@ export const resumeAPI = {
 
   // Collections
   createCollection: (data) => api.post('/resume-collections', data),
-  getAllCollections: () => api.get('/resume-collections'),
+  getAllCollections: (params) => api.get('/resume-collections', { params }),
   getCollectionDetail: (id) => api.get(`/resume-collections/${id}`),
   updateCollection: (id, data) => api.put(`/resume-collections/${id}`, data),
   addStudentsToCollection: (id, studentIds) => api.post(`/resume-collections/${id}/students`, { student_ids: studentIds }),
@@ -253,6 +271,27 @@ export const resumeAPI = {
     const idsQuery = studentIds && studentIds.length > 0 ? `?student_ids=${studentIds.join(',')}` : '';
     return `${API_BASE_URL}/public/resumes/${token}/download-bulk${idsQuery}`;
   }
+};
+
+export const courseAPI = {
+  getAll: (includeInactive = false) => api.get(`/courses${includeInactive ? '?all=true' : ''}`),
+  getMyCourses: () => api.get('/courses/my-courses'),
+  getBySlug: (slug) => api.get(`/courses/slug/${slug}`),
+  create: (data) => api.post('/courses', data),
+  update: (id, data) => api.put(`/courses/${id}`, data),
+  delete: (id) => api.delete(`/courses/${id}`),
+  getMembers: (courseId, role) => api.get(`/courses/${courseId}/members${role ? `?role=${role}` : ''}`),
+  assignMember: (courseId, data) => api.post(`/courses/${courseId}/members`, data),
+  removeMember: (courseId, userId) => api.delete(`/courses/${courseId}/members/${userId}`)
+};
+
+export const superAdminAPI = {
+  getOverview: () => api.get('/super-admin/overview'),
+  getAllUsers: () => api.get('/super-admin/users'),
+  getAuditLogs: () => api.get('/super-admin/audit-logs'),
+  assignCourseAdmin: (data) => api.post('/super-admin/assign-course-admin', data),
+  getCourseAdmins: (courseId) => api.get(`/super-admin/courses/${courseId}/admins`),
+  removeCourseAdmin: (courseId, userId) => api.delete(`/super-admin/courses/${courseId}/admins/${userId}`)
 };
 
 export default api;

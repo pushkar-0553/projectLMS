@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { resumeAPI } from '../../services/api';
+import { useNavigate } from 'react-router-dom';
+import { resumeAPI, courseAPI } from '../../services/api';
+import { useCourse } from '../../context/CourseContext';
 import ResumeFilters from '../../components/resumes/ResumeFilters';
 import ResumeTable from '../../components/resumes/ResumeTable';
 import ResumeViewer from '../../components/resumes/ResumeViewer';
@@ -10,9 +12,13 @@ import WhatsAppModal from '../../components/resumes/whatsapp/WhatsAppModal';
 import { useAuth } from '../../context/AuthContext';
 import styles from './ResumeDashboard.styles';
 
-
 const ResumeDashboard = () => {
+  const navigate = useNavigate();
   const { user } = useAuth();
+  const { currentCourse, courseSlug } = useCourse();
+  const [courses, setCourses] = useState([]);
+  const [selectedCourseFilter, setSelectedCourseFilter] = useState('');
+
   const [students, setStudents] = useState([]);
   const [filteredStudents, setFilteredStudents] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -53,28 +59,45 @@ const ResumeDashboard = () => {
     missingResume: 0,
   });
 
+  const activeCourseId = currentCourse?.id || (selectedCourseFilter ? parseInt(selectedCourseFilter, 10) : null);
+
   useEffect(() => {
-    loadData();
-  }, []);
+    if (user?.role === 'super_admin') {
+      courseAPI.getAll()
+        .then(res => {
+          if (res.data?.courses) setCourses(res.data.courses);
+          else if (Array.isArray(res.data)) setCourses(res.data);
+        })
+        .catch(err => console.error('Failed to load courses list:', err));
+    }
+  }, [user]);
+
+  useEffect(() => {
+    loadData(activeCourseId);
+  }, [activeCourseId, courseSlug]);
 
   useEffect(() => {
     applyFiltersAndSearch();
   }, [students, searchQuery, filters]);
 
-  const loadCollections = async () => {
+  const loadCollections = async (cId) => {
     try {
-      const response = await resumeAPI.getAllCollections();
+      const targetId = cId !== undefined ? cId : activeCourseId;
+      const params = targetId ? { courseId: targetId } : {};
+      const response = await resumeAPI.getAllCollections(params);
       setCollections(response.data);
     } catch (err) {
       console.error('Error loading collections history:', err);
     }
   };
 
-  const loadData = async () => {
+  const loadData = async (cId) => {
     try {
       setLoading(true);
       setError('');
-      const response = await resumeAPI.getAllResumes();
+      const targetId = cId !== undefined ? cId : activeCourseId;
+      const params = targetId ? { courseId: targetId } : {};
+      const response = await resumeAPI.getAllResumes(params);
       setStudents(response.data);
 
       // Extract unique batches list
@@ -93,7 +116,7 @@ const ResumeDashboard = () => {
       });
 
       // Load collections in background
-      await loadCollections();
+      await loadCollections(targetId);
     } catch (err) {
       console.error(err);
       setError('Failed to fetch students and resumes. Please reload.');
@@ -282,21 +305,87 @@ const ResumeDashboard = () => {
       <div style={styles.header}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', flexWrap: 'wrap', gap: '16px' }}>
           <div>
-            <h1 style={styles.title}>Placement Resume Hub</h1>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+              <h1 style={styles.title}>Placement Resume Hub</h1>
+              {currentCourse && (
+                <span style={{
+                  background: '#eff6ff',
+                  color: '#1d4ed8',
+                  border: '1px solid #bfdbfe',
+                  padding: '4px 10px',
+                  borderRadius: '6px',
+                  fontSize: '13px',
+                  fontWeight: '600'
+                }}>
+                  📚 {currentCourse.name} ({currentCourse.code})
+                </span>
+              )}
+            </div>
             <p style={styles.subtitle}>Manage student profile metadata, view PDF resumes, and create public links for HR recruiters.</p>
           </div>
-          {isAllowedRole && (
-            <button
-              onClick={() => {
-                setWhatsappStudents([]);
-                setShowWhatsAppModal(true);
-              }}
-              style={styles.historyBtn}
-              title="View WhatsApp Audit Logs"
-            >
-              📜 WhatsApp History
-            </button>
-          )}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+            {user?.role === 'super_admin' && courses.length > 0 && !currentCourse && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <label style={{ fontSize: '13px', fontWeight: '600', color: '#475569' }}>Filter Course:</label>
+                <select
+                  value={selectedCourseFilter}
+                  onChange={(e) => setSelectedCourseFilter(e.target.value)}
+                  style={{
+                    padding: '8px 12px',
+                    borderRadius: '8px',
+                    border: '1px solid #cbd5e1',
+                    fontSize: '13px',
+                    fontWeight: '500',
+                    background: '#fff',
+                    cursor: 'pointer'
+                  }}
+                >
+                  <option value="">All Courses</option>
+                  {courses.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name} ({c.code})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+            {currentCourse && (
+              <button
+                onClick={() => {
+                  if (user?.role === 'admin' || user?.role === 'super_admin') {
+                    navigate(`/${courseSlug}/admin`);
+                  } else if (user?.role === 'coordinator') {
+                    navigate(`/${courseSlug}/coordinator`);
+                  } else if (user?.role === 'faculty') {
+                    navigate(`/${courseSlug}/faculty`);
+                  } else {
+                    navigate(`/${courseSlug}/dashboard`);
+                  }
+                }}
+                style={{
+                  ...styles.historyBtn,
+                  background: '#f8fafc',
+                  color: '#334155',
+                  borderColor: '#cbd5e1'
+                }}
+                title="Return to Course Workspace"
+              >
+                ← Back to Dashboard
+              </button>
+            )}
+            {isAllowedRole && (
+              <button
+                onClick={() => {
+                  setWhatsappStudents([]);
+                  setShowWhatsAppModal(true);
+                }}
+                style={styles.historyBtn}
+                title="View WhatsApp Audit Logs"
+              >
+                📜 WhatsApp History
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -430,11 +519,13 @@ const ResumeDashboard = () => {
       {showCollectionModal && (
         <ResumeCollectionModal
           selectedStudentIds={selectedStudentIds}
+          courseId={activeCourseId}
+          courseName={currentCourse?.name || courses.find(c => c.id === activeCourseId)?.name}
           onClose={() => {
             setShowCollectionModal(false);
             setSelectedStudentIds([]); // Clear selection after generating
           }}
-          onSuccess={loadData}
+          onSuccess={() => loadData(activeCourseId)}
         />
       )}
 

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { userAPI } from '../../services/api'
+import { useCourse } from '../../context/CourseContext'
 import Button from '../../components/common/Button'
 import { 
   Users, 
@@ -23,6 +24,8 @@ import * as XLSX from 'xlsx'
 
 const StudentManagement = () => {
   const navigate = useNavigate()
+  const { courseSlug } = useCourse()
+  const baseAdmin = courseSlug ? `/${courseSlug}/admin` : '/admin'
   const [students, setStudents] = useState([])
   const [loading, setLoading] = useState(true)
   const [showCreateForm, setShowCreateForm] = useState(false)
@@ -173,7 +176,7 @@ const StudentManagement = () => {
           <div className="flex-between flex-wrap gap-6">
             <div className="header-left">
               <div className="flex-center gap-2 mb-2">
-                <Link to="/admin" className="back-link"><ChevronLeft className="icon-sm" /> Back</Link>
+                <Link to={baseAdmin} className="back-link"><ChevronLeft className="icon-sm" /> Back</Link>
                 <span className="badge badge-indigo">Administration</span>
               </div>
               <h1 className="header-title-modern">Student Management</h1>
@@ -358,7 +361,7 @@ const StudentManagement = () => {
                             <Button 
                               variant="outline" 
                               size="small"
-                              onClick={() => navigate(`/admin/student/${student.id}`)}
+                              onClick={() => navigate(`${baseAdmin}/student/${student.id}`)}
                               className="text-indigo-600 hover:bg-indigo-50"
                             >
                               <Eye className="icon-xs mr-1" /> Profile

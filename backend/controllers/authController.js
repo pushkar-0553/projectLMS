@@ -9,7 +9,13 @@ const authController = {
       if (!user) {
         return res.status(404).json({ message: 'User not found' });
       }
-      res.json({ user });
+      const CourseMembership = require('../models/courseMembershipModel');
+      const memberships = await CourseMembership.getUserMemberships(user.id);
+      const { password: _pwd, ...safeUser } = user;
+      safeUser.courses = memberships;
+      safeUser.primaryCourse = memberships.length > 0 ? memberships[0] : null;
+
+      res.json({ user: safeUser });
     } catch (error) {
       console.error('Get user error:', error);
       res.status(500).json({ message: 'Server error' });
@@ -74,6 +80,12 @@ const authController = {
 
       // Issue #1 fix: Strip password from response
       const { password: _pwd, ...safeUser } = user;
+
+      // Attach user's course memberships so frontend knows their primary course
+      const CourseMembership = require('../models/courseMembershipModel');
+      const memberships = await CourseMembership.getUserMemberships(user.id);
+      safeUser.courses = memberships;
+      safeUser.primaryCourse = memberships.length > 0 ? memberships[0] : null;
 
       res.json({
         message: 'Login successful',

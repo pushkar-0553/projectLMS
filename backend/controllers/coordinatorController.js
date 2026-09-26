@@ -61,7 +61,9 @@ const coordinatorController = {
   async getMySubBatches(req, res) {
     try {
       const coordinatorId = req.user.id;
-      const subBatches = await Batch.getSubBatchesByCoordinator(coordinatorId);
+      const Course = require('../models/courseModel');
+      const targetCourseId = await Course.resolveCourseId(req);
+      const subBatches = await Batch.getSubBatchesByCoordinator(coordinatorId, targetCourseId);
       res.json(subBatches);
     } catch (error) {
       console.error('Get my sub-batches error:', error);
@@ -96,10 +98,13 @@ const coordinatorController = {
 
   async createTask(req, res) {
     try {
-      const { title, description, file_path, assigned_type, deadline } = req.body;
+      const { title, description, file_path, assigned_type, deadline, courseId } = req.body;
       const coordinatorId = req.user.id;
+      const Course = require('../models/courseModel');
+      const targetCourseId = courseId || await Course.resolveCourseId(req);
 
       const taskId = await Task.create({
+        course_id: targetCourseId,
         title,
         description,
         file_path,
@@ -185,7 +190,9 @@ const coordinatorController = {
   async getMyTasks(req, res) {
     try {
       const coordinatorId = req.user.id;
-      const tasks = await Task.getTasksByCoordinator(coordinatorId);
+      const Course = require('../models/courseModel');
+      const targetCourseId = await Course.resolveCourseId(req);
+      const tasks = await Task.getTasksByCoordinator(coordinatorId, targetCourseId);
       res.json(tasks);
     } catch (error) {
       console.error('Get my tasks error:', error);
@@ -251,26 +258,33 @@ const coordinatorController = {
   async getDashboardStats(req, res) {
     try {
       const coordinatorId = req.user.id;
+      const Course = require('../models/courseModel');
+      const targetCourseId = await Course.resolveCourseId(req);
       
-      // Issue #11 fix: Scope stats to coordinator's batches
+      const courseFilter = targetCourseId ? ' AND b.course_id = ?' : '';
+      const subBatchCourseFilter = targetCourseId ? ' JOIN Batches b ON sb.batch_id = b.id WHERE sb.created_by = ? AND b.course_id = ?' : ' WHERE sb.created_by = ?';
+      const params = targetCourseId
+        ? [coordinatorId, targetCourseId, coordinatorId, targetCourseId, coordinatorId, targetCourseId, coordinatorId, targetCourseId]
+        : [coordinatorId, coordinatorId, coordinatorId, coordinatorId];
+
       const [stats] = await pool.execute(`
         SELECT 
           (SELECT COUNT(DISTINCT sbm.student_id) FROM StudentBatchMap sbm
            JOIN Batches b ON sbm.batch_id = b.id
-           WHERE b.coordinator_id = ?) as total_students,
+           WHERE b.coordinator_id = ?${courseFilter}) as total_students,
           (SELECT COUNT(*) FROM StudentProgress sp
            JOIN Users u ON sp.user_id = u.id
            JOIN StudentBatchMap sbm ON u.id = sbm.student_id
            JOIN Batches b ON sbm.batch_id = b.id
-           WHERE sp.status = 'pending' AND b.coordinator_id = ?) as pending_approvals,
+           WHERE sp.status = 'pending' AND b.coordinator_id = ?${courseFilter}) as pending_approvals,
           (SELECT COUNT(*) FROM StudentProgress sp
            JOIN Users u ON sp.user_id = u.id
            JOIN StudentBatchMap sbm ON u.id = sbm.student_id
            JOIN Batches b ON sbm.batch_id = b.id
-           WHERE sp.status = 'approved' AND b.coordinator_id = ?) as total_approvals,
-          (SELECT COUNT(*) FROM SubBatches WHERE created_by = ?) as total_subbatches
+           WHERE sp.status = 'approved' AND b.coordinator_id = ?${courseFilter}) as total_approvals,
+          (SELECT COUNT(*) FROM SubBatches sb${subBatchCourseFilter}) as total_subbatches
         FROM DUAL
-      `, [coordinatorId, coordinatorId, coordinatorId, coordinatorId]);
+      `, params);
       
       res.json(stats[0]);
     } catch (error) {
@@ -282,7 +296,14 @@ const coordinatorController = {
   async getPendingApprovals(req, res) {
     try {
       const coordinatorId = req.user.id;
-      // Issue #13 fix: Filter pending approvals to coordinator's batches only
+      const Course = require('../models/courseModel');
+      const targetCourseId = await Course.resolveCourseId(req);
+      const courseFilter = targetCourseId ? ' AND (b.course_id = ? OR p.course_id = ?)' : '';
+      const params = [coordinatorId];
+      if (targetCourseId) {
+        params.push(targetCourseId, targetCourseId);
+      }
+
       const [rows] = await pool.execute(`
         SELECT sp.*, u.name as student_name, p.title as project_title, s.title as step_title, s.step_order as order_index
         FROM StudentProgress sp
@@ -291,9 +312,9 @@ const coordinatorController = {
         JOIN Steps s ON sp.step_id = s.id
         JOIN StudentBatchMap sbm ON sp.user_id = sbm.student_id
         JOIN Batches b ON sbm.batch_id = b.id
-        WHERE sp.status = 'pending' AND b.coordinator_id = ?
+        WHERE sp.status = 'pending' AND b.coordinator_id = ?${courseFilter}
         ORDER BY sp.submitted_at DESC
-      `, [coordinatorId]);
+      `, params);
       res.json(rows);
     } catch (error) {
       console.error('Get pending approvals error:', error);
@@ -303,7 +324,11 @@ const coordinatorController = {
 
   async getProjectStats(req, res) {
     try {
-      // Issue #15 fix: Use StepProgress and StudentProgress instead of non-existent Progress table
+      const Course = require('../models/courseModel');
+      const targetCourseId = await Course.resolveCourseId(req);
+      const courseFilter = targetCourseId ? ' WHERE p.course_id = ?' : '';
+      const params = targetCourseId ? [targetCourseId] : [];
+
       const [rows] = await pool.execute(`
         SELECT p.title as name, COUNT(DISTINCT users.user_id) as students
         FROM Projects p
@@ -314,9 +339,10 @@ const coordinatorController = {
           UNION
           SELECT student_id as user_id, project_id FROM StudentProjects
         ) users ON p.id = users.project_id
+        ${courseFilter}
         GROUP BY p.id, p.title
         HAVING students > 0
-      `);
+      `, params);
       res.json(rows);
     } catch (error) {
       console.error('Get project stats error:', error);

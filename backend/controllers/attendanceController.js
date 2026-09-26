@@ -7,10 +7,12 @@ const attendanceController = {
     try {
       const userId = req.user.id;
       const role = req.user.role;
+      const Course = require('../models/courseModel');
+      const targetCourseId = await Course.resolveCourseId(req);
 
-      const batches = role === 'admin'
-        ? await AttendanceModel.getAllBatches()
-        : await AttendanceModel.getBatchesByCoordinator(userId);
+      const batches = (role === 'admin' || role === 'super_admin')
+        ? await AttendanceModel.getAllBatches(targetCourseId)
+        : await AttendanceModel.getBatchesByCoordinator(userId, targetCourseId);
 
       res.json(batches);
     } catch (err) {
@@ -22,7 +24,9 @@ const attendanceController = {
   // GET /api/attendance/unassigned — students with no batch
   async getUnassigned(req, res) {
     try {
-      const students = await AttendanceModel.getUnassignedStudents();
+      const Course = require('../models/courseModel');
+      const targetCourseId = await Course.resolveCourseId(req);
+      const students = await AttendanceModel.getUnassignedStudents(targetCourseId);
       res.json(students);
     } catch (err) {
       console.error('getUnassigned error:', err);
@@ -158,11 +162,19 @@ const attendanceController = {
       const { startDate, endDate } = req.query;
 
       // Find student's batch
+      const Course = require('../models/courseModel');
+      const targetCourseId = await Course.resolveCourseId(req);
       const pool = require('../config/db');
-      const [batchRows] = await pool.execute(
-        `SELECT batch_id FROM StudentBatchMap WHERE student_id = ? LIMIT 1`,
-        [studentId]
-      );
+
+      let batchQuery = `SELECT sbm.batch_id FROM StudentBatchMap sbm JOIN Batches b ON sbm.batch_id = b.id WHERE sbm.student_id = ?`;
+      const queryParams = [studentId];
+      if (targetCourseId) {
+        batchQuery += ` AND b.course_id = ?`;
+        queryParams.push(targetCourseId);
+      }
+      batchQuery += ` LIMIT 1`;
+
+      const [batchRows] = await pool.execute(batchQuery, queryParams);
 
       if (batchRows.length === 0) {
         return res.json({ status: 'unassigned', records: [] });

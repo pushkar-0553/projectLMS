@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
+import { useCourse } from '../../context/CourseContext'
 import { coordinatorAPI } from '../../services/api'
 import platformAPI from '../../services/platformAPI'
 import ConfirmDialog from '../../components/common/ConfirmDialog'
@@ -20,6 +21,8 @@ const COLORS = ['#4f46e5', '#10b981', '#f59e0b', '#ec4899', '#8b5cf6', '#0ea5e9'
 
 const CoordinatorDashboard = () => {
   const { user } = useAuth()
+  const { courseSlug } = useCourse()
+  const baseCoord = courseSlug ? `/${courseSlug}/coordinator` : '/coordinator'
   const navigate = useNavigate()
   const [students, setStudents] = useState([])
   const [pendingApprovals, setPendingApprovals] = useState([])
@@ -125,7 +128,7 @@ const CoordinatorDashboard = () => {
   }
 
   const selectStudent = (student) => {
-    navigate(`/coordinator/student/${student.id}`)
+    navigate(`${baseCoord}/student/${student.id}`)
   }
 
   const filteredStudents = students.filter(s =>

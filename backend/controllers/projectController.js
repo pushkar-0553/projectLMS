@@ -1,12 +1,19 @@
 const Project = require('../models/projectModel');
 const Step = require('../models/stepModel');
 const Progress = require('../models/progressModel');
+const Course = require('../models/courseModel');
 const pool = require('../config/db');
 
 const projectController = {
   async getAllProjects(req, res) {
     try {
-      const projects = await Project.getAll();
+      let courseId = req.query.courseId || req.courseId;
+      const slug = req.headers['x-course-slug'] || req.query.courseSlug;
+      if (!courseId && slug) {
+        const c = await Course.findBySlug(slug);
+        if (c) courseId = c.id;
+      }
+      const projects = await Project.getAll(courseId);
       res.json(projects);
     } catch (error) {
       console.error('Get projects error:', error);
@@ -64,6 +71,13 @@ const projectController = {
         }
       }
 
+      // Resolve courseId
+      let targetCourseId = req.body.courseId || req.body.course_id || req.courseId;
+      if (!targetCourseId && req.headers['x-course-slug']) {
+        const c = await Course.findBySlug(req.headers['x-course-slug']);
+        if (c) targetCourseId = c.id;
+      }
+
       // Create the project
       const projectId = await Project.create({ 
         title, 
@@ -73,7 +87,8 @@ const projectController = {
         estimatedTime,
         orderIndex,
         prerequisites: parsedPrerequisites,
-        type
+        type,
+        courseId: targetCourseId || 1
       });
 
       // Update thumbnail if uploaded
@@ -256,7 +271,12 @@ const projectController = {
   async getProjectsByLevel(req, res) {
     try {
       const { level } = req.params;
-      const projects = await Project.getByLevel(level);
+      let courseId = req.query.courseId || req.courseId;
+      if (!courseId && req.headers['x-course-slug']) {
+        const c = await Course.findBySlug(req.headers['x-course-slug']);
+        if (c) courseId = c.id;
+      }
+      const projects = await Project.getByLevel(level, courseId);
       res.json(projects);
     } catch (error) {
       console.error('Get projects by level error:', error);
@@ -267,7 +287,12 @@ const projectController = {
   async getProjectsByType(req, res) {
     try {
       const { type } = req.params;
-      const projects = await Project.getByType(type);
+      let courseId = req.query.courseId || req.courseId;
+      if (!courseId && req.headers['x-course-slug']) {
+        const c = await Course.findBySlug(req.headers['x-course-slug']);
+        if (c) courseId = c.id;
+      }
+      const projects = await Project.getByType(type, courseId);
       res.json(projects);
     } catch (error) {
       console.error('Get projects by type error:', error);
@@ -307,7 +332,9 @@ const projectController = {
   async getUserProgress(req, res) {
     try {
       const userId = req.user.id;
-      const progress = await Progress.getUserOverallProgress(userId);
+      const Course = require('../models/courseModel');
+      const targetCourseId = await Course.resolveCourseId(req);
+      const progress = await Progress.getUserOverallProgress(userId, targetCourseId);
       res.json(progress);
     } catch (error) {
       console.error('Get user progress error:', error);
@@ -336,10 +363,12 @@ const projectController = {
   async getDashboardStats(req, res) {
     try {
       const userId = req.user.id;
+      const Course = require('../models/courseModel');
+      const targetCourseId = await Course.resolveCourseId(req);
       
-      const completedCount = await Progress.getCompletedProjectsCount(userId);
-      const activeProject = await Progress.getCurrentActiveProject(userId);
-      const overallProgress = await Progress.getUserOverallProgress(userId);
+      const completedCount = await Progress.getCompletedProjectsCount(userId, targetCourseId);
+      const activeProject = await Progress.getCurrentActiveProject(userId, targetCourseId);
+      const overallProgress = await Progress.getUserOverallProgress(userId, targetCourseId);
 
       res.json({
         completedProjects: completedCount,

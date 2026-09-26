@@ -43,7 +43,7 @@ const authorize = (...roles) => {
       // Role is already fresh from DB via protect middleware
       const userRole = req.user.role;
 
-      if (!userRole || !roles.includes(userRole)) {
+      if (!userRole || (!roles.includes(userRole) && userRole !== 'super_admin')) {
         return res.status(403).json({ 
           message: `Role ${userRole} is not authorized to access this route` 
         });

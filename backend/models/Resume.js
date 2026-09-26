@@ -4,7 +4,7 @@ class Resume {
   /**
    * Create a new resume record. Automatically sets previous versions is_latest to false.
    */
-  static async create({ studentId, resumeTitle, resumeFileName, cloudinaryPublicId, cloudinaryUrl }) {
+  static async create({ studentId, resumeTitle, resumeFileName, cloudinaryPublicId, cloudinaryUrl, courseId }) {
     const connection = await pool.getConnection();
     try {
       await connection.beginTransaction();
@@ -25,9 +25,9 @@ class Resume {
       // 3. Insert the new resume
       const [result] = await connection.execute(
         `INSERT INTO student_resumes 
-          (student_id, resume_title, resume_file_name, file_name, cloudinary_public_id, cloudinary_url, version, is_latest)
-         VALUES (?, ?, ?, ?, ?, ?, ?, TRUE)`,
-        [studentId, resumeTitle, resumeFileName, resumeFileName, cloudinaryPublicId, cloudinaryUrl, nextVersion]
+          (student_id, resume_title, resume_file_name, file_name, cloudinary_public_id, cloudinary_url, version, is_latest, course_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, TRUE, ?)`,
+        [studentId, resumeTitle, resumeFileName, resumeFileName, cloudinaryPublicId, cloudinaryUrl, nextVersion, courseId || 1]
       );
 
       await connection.commit();
@@ -124,9 +124,52 @@ class Resume {
   }
 
   /**
-   * Get all students with their latest resume details, private notes, and batch name.
+   * Get all students with their latest resume details, private notes, batch name, and course info.
+   * Can be scoped by courseId.
    */
-  static async getAllStudentsWithResumeStatus() {
+  static async getAllStudentsWithResumeStatus(courseId = null) {
+    if (courseId) {
+      const [rows] = await pool.execute(
+        `SELECT 
+          u.id, 
+          u.name, 
+          u.email, 
+          u.mobile, 
+          u.batch,
+          u.domain, 
+          u.college, 
+          u.passout_year, 
+          u.current_location, 
+          u.skills, 
+          u.github, 
+          u.linkedin,
+          b.name as batch_name,
+          sr.id as resume_id,
+          sr.resume_title,
+          sr.resume_file_name,
+          sr.file_name,
+          sr.cloudinary_public_id,
+          sr.cloudinary_url,
+          sr.version,
+          sr.updated_at as resume_updated_at,
+          CASE WHEN sr.id IS NOT NULL THEN TRUE ELSE FALSE END as has_resume,
+          c.id as course_id,
+          c.name as course_name,
+          c.code as course_code,
+          c.slug as course_slug
+         FROM Users u
+         JOIN CourseMemberships cm ON u.id = cm.user_id AND cm.course_id = ? AND cm.status = 'active'
+         JOIN Courses c ON cm.course_id = c.id
+         LEFT JOIN StudentBatchMap sbm ON u.id = sbm.student_id
+         LEFT JOIN Batches b ON sbm.batch_id = b.id
+         LEFT JOIN student_resumes sr ON u.id = sr.student_id AND sr.is_latest = TRUE AND (sr.course_id = ? OR sr.course_id IS NULL)
+         WHERE u.role = 'student'
+         ORDER BY u.name ASC`,
+        [courseId, courseId]
+      );
+      return rows;
+    }
+
     const [rows] = await pool.execute(
       `SELECT 
         u.id, 
@@ -150,8 +193,14 @@ class Resume {
         sr.cloudinary_url,
         sr.version,
         sr.updated_at as resume_updated_at,
-        CASE WHEN sr.id IS NOT NULL THEN TRUE ELSE FALSE END as has_resume
+        CASE WHEN sr.id IS NOT NULL THEN TRUE ELSE FALSE END as has_resume,
+        COALESCE(c.id, 1) as course_id,
+        COALESCE(c.name, 'Full Stack Development') as course_name,
+        COALESCE(c.code, 'FS-01') as course_code,
+        COALESCE(c.slug, 'legacy') as course_slug
        FROM Users u
+       LEFT JOIN CourseMemberships cm ON u.id = cm.user_id AND cm.status = 'active'
+       LEFT JOIN Courses c ON cm.course_id = c.id
        LEFT JOIN StudentBatchMap sbm ON u.id = sbm.student_id
        LEFT JOIN Batches b ON sbm.batch_id = b.id
        LEFT JOIN student_resumes sr ON u.id = sr.student_id AND sr.is_latest = TRUE

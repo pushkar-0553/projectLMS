@@ -11,7 +11,7 @@ const requireRole = (roles) => {
           return res.status(404).json({ message: 'User not found' });
         }
 
-        if (!roles.includes(user.role)) {
+        if (!roles.includes(user.role) && user.role !== 'super_admin') {
           return res.status(403).json({ 
             message: 'Access denied. Insufficient permissions.' 
           });
@@ -34,6 +34,7 @@ const isFaculty = requireRole(['faculty']); // Issue #17 fix: only faculty
 const isAdminOrCoordinator = requireRole(['admin', 'coordinator']);
 const isAdminOrStudent = requireRole(['admin', 'student']);
 const isAdminOrFaculty = requireRole(['admin', 'faculty']);
+const isSuperAdmin = requireRole(['super_admin']);
 
 module.exports = {
   requireRole,
@@ -43,5 +44,6 @@ module.exports = {
   isFaculty,
   isAdminOrCoordinator,
   isAdminOrStudent,
-  isAdminOrFaculty
+  isAdminOrFaculty,
+  isSuperAdmin
 };

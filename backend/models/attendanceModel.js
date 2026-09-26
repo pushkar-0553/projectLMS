@@ -3,31 +3,39 @@ const pool = require('../config/db');
 class AttendanceModel {
 
   // Get all batches for a coordinator
-  static async getBatchesByCoordinator(coordinatorId) {
+  static async getBatchesByCoordinator(coordinatorId, courseId = null) {
+    const courseClause = courseId ? ' AND b.course_id = ?' : '';
+    const params = [coordinatorId];
+    if (courseId) params.push(courseId);
+
     const [rows] = await pool.execute(
       `SELECT b.id, b.name, b.description, b.start_date, b.end_date, b.is_active, 
               COUNT(sbm.student_id) as student_count
        FROM Batches b
        LEFT JOIN StudentBatchMap sbm ON b.id = sbm.batch_id
-       WHERE b.coordinator_id = ? AND b.is_active = TRUE
+       WHERE b.coordinator_id = ? AND b.is_active = TRUE ${courseClause}
        GROUP BY b.id, b.name, b.description, b.start_date, b.end_date, b.is_active
        ORDER BY b.name`,
-      [coordinatorId]
+      params
     );
     return rows;
   }
 
   // Get all active batches (admin use)
-  static async getAllBatches() {
+  static async getAllBatches(courseId = null) {
+    const courseClause = courseId ? ' AND b.course_id = ?' : '';
+    const params = courseId ? [courseId] : [];
+
     const [rows] = await pool.execute(
       `SELECT b.id, b.name, b.description, b.start_date, b.end_date, b.is_active, 
               u.name as coordinator_name, COUNT(sbm.student_id) as student_count
        FROM Batches b
        LEFT JOIN Users u ON b.coordinator_id = u.id
        LEFT JOIN StudentBatchMap sbm ON b.id = sbm.batch_id
-       WHERE b.is_active = TRUE
+       WHERE b.is_active = TRUE ${courseClause}
        GROUP BY b.id, b.name, b.description, b.start_date, b.end_date, b.is_active, u.name
-       ORDER BY b.name`
+       ORDER BY b.name`,
+      params
     );
     return rows;
   }
@@ -46,7 +54,22 @@ class AttendanceModel {
   }
 
   // Get students NOT assigned to any batch
-  static async getUnassignedStudents() {
+  static async getUnassignedStudents(courseId = null) {
+    if (courseId) {
+      const [rows] = await pool.execute(
+        `SELECT u.id, u.name, u.email, u.mobile
+         FROM Users u
+         JOIN CourseMemberships cm ON u.id = cm.user_id AND cm.course_id = ? AND cm.role = 'student'
+         WHERE u.role = 'student'
+           AND u.id NOT IN (
+             SELECT sbm.student_id FROM StudentBatchMap sbm 
+             JOIN Batches b ON sbm.batch_id = b.id WHERE b.course_id = ?
+           )
+         ORDER BY u.name`,
+        [courseId, courseId]
+      );
+      return rows;
+    }
     const [rows] = await pool.execute(
       `SELECT u.id, u.name, u.email, u.mobile
        FROM Users u
@@ -248,31 +271,39 @@ class AttendanceModel {
   }
 
   // Get all batches (for assignment dropdown — admin sees all, coordinator sees own)
-  static async getAllActiveBatches() {
+  static async getAllActiveBatches(courseId = null) {
+    const courseClause = courseId ? ' AND b.course_id = ?' : '';
+    const params = courseId ? [courseId] : [];
+
     const [rows] = await pool.execute(
       `SELECT b.id, b.name, b.description, u.name as coordinator_name,
               COUNT(sbm.student_id) as student_count
        FROM Batches b
        LEFT JOIN Users u ON b.coordinator_id = u.id
        LEFT JOIN StudentBatchMap sbm ON b.id = sbm.batch_id
-       WHERE b.is_active = TRUE
+       WHERE b.is_active = TRUE ${courseClause}
        GROUP BY b.id, b.name, b.description, u.name
-       ORDER BY b.name`
+       ORDER BY b.name`,
+      params
     );
     return rows;
   }
 
   // Get student's current batch assignment
-  static async getStudentBatch(studentId) {
+  static async getStudentBatch(studentId, courseId = null) {
+    const courseClause = courseId ? ' AND b.course_id = ?' : '';
+    const params = [studentId];
+    if (courseId) params.push(courseId);
+
     const [rows] = await pool.execute(
       `SELECT b.id, b.name, b.description, sbm.assigned_at,
               u.name as coordinator_name
        FROM StudentBatchMap sbm
        JOIN Batches b ON sbm.batch_id = b.id
        LEFT JOIN Users u ON b.coordinator_id = u.id
-       WHERE sbm.student_id = ?
+       WHERE sbm.student_id = ? ${courseClause}
        LIMIT 1`,
-      [studentId]
+      params
     );
     return rows[0] || null;
   }

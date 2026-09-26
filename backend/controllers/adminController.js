@@ -6,7 +6,7 @@ const bcrypt = require('bcryptjs');
 
 exports.createUser = async (req, res) => {
   try {
-    const { name, email, password, role, mobile } = req.body;
+    const { name, email, password, role, mobile, courseId } = req.body;
     
     // Check if user exists
     const existingUser = await User.findByEmail(email);
@@ -25,6 +25,45 @@ exports.createUser = async (req, res) => {
       role,
       mobile
     });
+
+    // Auto-enroll in course membership if course context is present
+    let targetCourseId = courseId || req.courseId;
+    if (!targetCourseId && req.headers['x-course-slug']) {
+      const Course = require('../models/courseModel');
+      const c = await Course.findBySlug(req.headers['x-course-slug']);
+      if (c) targetCourseId = c.id;
+    }
+    if (!targetCourseId && req.user && req.user.course_id && req.user.role !== 'super_admin') {
+      targetCourseId = req.user.course_id;
+    }
+    if (!targetCourseId) {
+      targetCourseId = 1; // Default to MERN course
+    }
+
+    if (targetCourseId) {
+      const CourseMembership = require('../models/courseMembershipModel');
+      await CourseMembership.enroll({
+        userId,
+        courseId: targetCourseId,
+        role: role || 'student'
+      });
+    }
+
+    // If batch provided and user is student, map into StudentBatchMap
+    if (req.body.batch && (role === 'student' || !role)) {
+      const pool = require('../config/db');
+      let batchId = parseInt(req.body.batch, 10);
+      if (isNaN(batchId)) {
+        const [bRows] = await pool.execute('SELECT id FROM Batches WHERE name = ? AND course_id = ? LIMIT 1', [req.body.batch, targetCourseId]);
+        if (bRows.length > 0) batchId = bRows[0].id;
+      }
+      if (batchId && !isNaN(batchId)) {
+        await pool.execute(
+          'INSERT IGNORE INTO StudentBatchMap (student_id, batch_id) VALUES (?, ?)',
+          [userId, batchId]
+        );
+      }
+    }
     
     // Log activity
     await logActivity(
@@ -45,8 +84,17 @@ exports.createUser = async (req, res) => {
 
 exports.createBatch = async (req, res) => {
   try {
-    const { name, classLink } = req.body;
-    const batchId = await Batch.create(name, classLink);
+    const { name, classLink, courseId } = req.body;
+    let targetCourseId = courseId || req.courseId;
+    if (!targetCourseId && req.headers['x-course-slug']) {
+      const Course = require('../models/courseModel');
+      const c = await Course.findBySlug(req.headers['x-course-slug']);
+      if (c) targetCourseId = c.id;
+    }
+    if (!targetCourseId && req.user && req.user.course_id && req.user.role !== 'super_admin') {
+      targetCourseId = req.user.course_id;
+    }
+    const batchId = await Batch.create(name, classLink, targetCourseId || 1);
     
     // Log activity
     await logActivity(
@@ -93,7 +141,9 @@ exports.updateBatchClassLink = async (req, res) => {
 
 exports.getBatches = async (req, res) => {
   try {
-    const batches = await Batch.getBatchHierarchy();
+    const Course = require('../models/courseModel');
+    const courseId = await Course.resolveCourseId(req);
+    const batches = await Batch.getBatchHierarchy(courseId);
     res.json(batches);
   } catch (error) {
     console.error('Error fetching batches:', error);
@@ -103,7 +153,9 @@ exports.getBatches = async (req, res) => {
 
 exports.getCoordinators = async (req, res) => {
   try {
-    const coordinators = await User.findByRole('coordinator');
+    const Course = require('../models/courseModel');
+    const courseId = await Course.resolveCourseId(req);
+    const coordinators = await User.findByRole('coordinator', courseId);
     res.json(coordinators);
   } catch (error) {
     console.error('Error fetching coordinators:', error);
@@ -113,7 +165,9 @@ exports.getCoordinators = async (req, res) => {
 
 exports.getFaculties = async (req, res) => {
   try {
-    const faculties = await User.findByRole('faculty');
+    const Course = require('../models/courseModel');
+    const courseId = await Course.resolveCourseId(req);
+    const faculties = await User.findByRole('faculty', courseId);
     res.json(faculties);
   } catch (error) {
     console.error('Error fetching faculties:', error);
@@ -123,7 +177,9 @@ exports.getFaculties = async (req, res) => {
 
 exports.getStudents = async (req, res) => {
   try {
-    const students = await User.findByRole('student');
+    const Course = require('../models/courseModel');
+    const courseId = await Course.resolveCourseId(req);
+    const students = await User.findByRole('student', courseId);
     res.json(students);
   } catch (error) {
     console.error('Error fetching students:', error);

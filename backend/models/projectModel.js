@@ -1,12 +1,23 @@
 const pool = require('../config/db');
 
 class Project {
-  static async getAll() {
+  static async getAll(courseId = null) {
+    if (courseId) {
+      const [rows] = await pool.execute('SELECT * FROM Projects WHERE course_id = ? ORDER BY level, order_index, id', [courseId]);
+      return rows;
+    }
     const [rows] = await pool.execute('SELECT * FROM Projects ORDER BY level, order_index, id');
     return rows;
   }
 
-  static async getByLevel(level) {
+  static async getByLevel(level, courseId = null) {
+    if (courseId) {
+      const [rows] = await pool.execute(
+        'SELECT * FROM Projects WHERE level = ? AND course_id = ? ORDER BY order_index, id',
+        [level, courseId]
+      );
+      return rows;
+    }
     const [rows] = await pool.execute(
       'SELECT * FROM Projects WHERE level = ? ORDER BY order_index, id',
       [level]
@@ -14,7 +25,14 @@ class Project {
     return rows;
   }
 
-  static async getByType(type) {
+  static async getByType(type, courseId = null) {
+    if (courseId) {
+      const [rows] = await pool.execute(
+        'SELECT * FROM Projects WHERE type = ? AND course_id = ? ORDER BY level, order_index, id',
+        [type, courseId]
+      );
+      return rows;
+    }
     const [rows] = await pool.execute(
       'SELECT * FROM Projects WHERE type = ? ORDER BY level, order_index, id',
       [type]
@@ -30,12 +48,12 @@ class Project {
     return rows[0];
   }
 
-  static async create({ title, description, level, difficulty, estimatedTime, orderIndex, prerequisites, type = 'main' }) {
+  static async create({ title, description, level, difficulty, estimatedTime, orderIndex, prerequisites, type = 'main', courseId = 1 }) {
     const [result] = await pool.execute(
       `INSERT INTO Projects 
-       (title, description, level, difficulty, estimated_time, order_index, prerequisites, type) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [title, description, level, difficulty, estimatedTime, orderIndex, JSON.stringify(prerequisites), type]
+       (title, description, level, difficulty, estimated_time, order_index, prerequisites, type, course_id) 
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [title, description, level, difficulty, estimatedTime, orderIndex, JSON.stringify(prerequisites), type, courseId || 1]
     );
     return result.insertId;
   }

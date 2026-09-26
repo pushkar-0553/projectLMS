@@ -1,4 +1,21 @@
 const ResumeCollection = require('../models/ResumeCollection');
+const Course = require('../models/courseModel');
+
+// Helper to resolve course context
+async function resolveCourseId(req) {
+  let courseId = req.body?.course_id || req.body?.courseId || req.query?.courseId || req.params?.courseId || req.courseId;
+  if (!courseId) {
+    const slug = req.headers['x-course-slug'] || req.query?.courseSlug || req.params?.courseSlug;
+    if (slug) {
+      const course = await Course.findBySlug(slug);
+      if (course) courseId = course.id;
+    }
+  }
+  if (!courseId && req.user && req.user.role !== 'super_admin' && req.user.course_id) {
+    courseId = req.user.course_id;
+  }
+  return courseId ? parseInt(courseId, 10) : null;
+}
 
 // Helper to generate a slug token
 function generateShareToken(title) {
@@ -20,6 +37,7 @@ const resumeCollectionController = {
     try {
       const { title, student_ids, company_name, salary, jd } = req.body;
       const createdBy = req.user?.id || req.body.created_by;
+      const targetCourseId = await resolveCourseId(req);
 
       if (!title) {
         return res.status(400).json({ message: 'Collection title is required' });
@@ -39,7 +57,8 @@ const resumeCollectionController = {
         studentIds: student_ids,
         companyName: company_name,
         salary,
-        jd
+        jd,
+        courseId: targetCourseId
       });
 
       res.status(201).json({
@@ -49,6 +68,7 @@ const resumeCollectionController = {
           title,
           share_token: shareToken,
           created_by: createdBy,
+          course_id: targetCourseId,
           share_url: `/resumes/share/${shareToken}`
         }
       });
@@ -60,11 +80,12 @@ const resumeCollectionController = {
 
   /**
    * GET /api/resume-collections
-   * Get all collections.
+   * Get all collections, optionally filtered by courseId.
    */
   async getAllCollections(req, res) {
     try {
-      const collections = await ResumeCollection.getAll();
+      const targetCourseId = await resolveCourseId(req);
+      const collections = await ResumeCollection.getAll(targetCourseId);
       res.json(collections);
     } catch (error) {
       console.error('Get all collections error:', error);

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import { userAPI, resumeAPI } from '../../services/api'
+import { useCourse } from '../../context/CourseContext'
 import ResumeUpload from '../resumes/ResumeUpload'
 import ResumeHistory from '../resumes/ResumeHistory'
 import {
@@ -81,7 +82,7 @@ export default function StudentProfilePage() {
   const navigate = useNavigate()
   const { user } = useAuth()
   const studentId = paramId || user?.id
-  const isStaff = ['admin', 'coordinator', 'faculty'].includes(user?.role)
+  const isStaff = ['admin', 'super_admin', 'coordinator', 'faculty'].includes(user?.role)
 
   const [profile, setProfile]         = useState(null)
   const [batches, setBatches]         = useState([])
@@ -111,13 +112,16 @@ export default function StudentProfilePage() {
   const [newProfileNote, setNewProfileNote] = useState('')
   const [savingProfileNote, setSavingProfileNote] = useState(false)
 
-  const backPath = user?.role === 'admin'
-    ? '/admin/students'
+  const { courseSlug } = useCourse()
+  const prefix = courseSlug ? `/${courseSlug}` : ''
+
+  const backPath = (user?.role === 'admin' || user?.role === 'super_admin')
+    ? `${prefix}/admin/students`
     : user?.role === 'faculty'
-      ? '/faculty/student-monitoring'
+      ? `${prefix}/faculty/student-monitoring`
       : user?.role === 'coordinator'
-        ? '/coordinator'
-        : '/dashboard'
+        ? `${prefix}/coordinator`
+        : `${prefix}/dashboard`
 
   useEffect(() => {
     loadProfile()
@@ -323,14 +327,25 @@ export default function StudentProfilePage() {
             </div>
 
             <div style={{ flex: 1, minWidth: 200 }}>
-              <div style={{
-                display: 'inline-flex', alignItems: 'center', gap: 6,
-                background: 'rgba(255,255,255,0.18)', borderRadius: 20,
-                padding: '3px 12px', fontSize: 11, color: 'rgba(255,255,255,0.9)',
-                fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase',
-                marginBottom: 8
-              }}>
-                <Activity size={11} /> Student
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8, flexWrap: 'wrap' }}>
+                <div style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 6,
+                  background: 'rgba(255,255,255,0.18)', borderRadius: 20,
+                  padding: '3px 12px', fontSize: 11, color: 'rgba(255,255,255,0.95)',
+                  fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase'
+                }}>
+                  <Activity size={11} /> Student
+                </div>
+                {(student.course_name || (student.courses && student.courses.length > 0)) && (
+                  <div style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 6,
+                    background: 'rgba(255,255,255,0.25)', borderRadius: 20,
+                    padding: '3px 12px', fontSize: 11, color: '#fff',
+                    fontWeight: 700, letterSpacing: '0.03em'
+                  }}>
+                    <BookOpen size={11} /> {student.course_name || student.courses?.map(c => c.name).join(', ')}
+                  </div>
+                )}
               </div>
               <h1 style={{ fontSize: 28, fontWeight: 800, color: '#fff', margin: '0 0 10px', letterSpacing: '-0.02em' }}>
                 {student.name}
@@ -348,28 +363,28 @@ export default function StudentProfilePage() {
               {isStaff ? (
                 <>
                   <button
-                    onClick={() => navigate(`${user?.role === 'faculty' ? '/faculty' : '/coordinator'}/attendance?studentId=${studentId}`)}
+                    onClick={() => navigate(`${prefix}${user?.role === 'faculty' ? '/faculty' : '/coordinator'}/attendance?studentId=${studentId}`)}
                     style={styles.heroAction}
                   >
                     <Calendar size={14} /> Attendance
                   </button>
                   <button
-                    onClick={() => navigate(`${user?.role === 'faculty' ? '/faculty' : '/coordinator'}/progress/${studentId}`)}
+                    onClick={() => navigate(`${prefix}${user?.role === 'faculty' ? '/faculty' : '/coordinator'}/academics`)}
                     style={{ ...styles.heroAction, background: 'rgba(255,255,255,0.9)', color: grad[0] }}
                   >
-                    <BookOpen size={14} /> Progress
+                    <BookOpen size={14} /> Academics
                   </button>
                 </>
               ) : (
                 <>
                   <button
-                    onClick={() => navigate('/student/attendance')}
+                    onClick={() => navigate(`${prefix}/student/attendance`)}
                     style={styles.heroAction}
                   >
                     <Calendar size={14} /> My Attendance
                   </button>
                   <button
-                    onClick={() => navigate('/my-progress')}
+                    onClick={() => navigate(`${prefix}/my-progress`)}
                     style={{ ...styles.heroAction, background: 'rgba(255,255,255,0.9)', color: grad[0] }}
                   >
                     <BookOpen size={14} /> My Progress
@@ -430,9 +445,18 @@ export default function StudentProfilePage() {
                       {currentBatch.description && (
                         <p style={{ fontSize: 12, color: '#64748b', margin: '0 0 2px' }}>{currentBatch.description}</p>
                       )}
-                      <p style={{ fontSize: 11, color: '#94a3b8', margin: 0 }}>
+                      <p style={{ fontSize: 11, color: '#94a3b8', margin: '0 0 4px' }}>
                         Coordinator: {currentBatch.coordinator_name || 'Unassigned'} · Assigned {new Date(currentBatch.assigned_at).toLocaleDateString('en-IN')}
                       </p>
+                      {student.course_name && (
+                        <span style={{
+                          display: 'inline-flex', alignItems: 'center', gap: 4,
+                          padding: '2px 8px', borderRadius: 6, fontSize: 11,
+                          fontWeight: 600, background: '#e0e7ff', color: '#4338ca'
+                        }}>
+                          <BookOpen size={10} /> Course: {student.course_name}
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>

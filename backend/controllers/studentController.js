@@ -5,7 +5,9 @@ const studentController = {
   async getMyTasks(req, res) {
     try {
       const studentId = req.user.id;
-      const tasks = await Task.getTasksForStudent(studentId);
+      const Course = require('../models/courseModel');
+      const targetCourseId = await Course.resolveCourseId(req);
+      const tasks = await Task.getTasksForStudent(studentId, targetCourseId);
       res.json(tasks);
     } catch (error) {
       console.error('Get my tasks error:', error);
@@ -17,9 +19,11 @@ const studentController = {
     try {
       const { id } = req.params;
       const studentId = req.user.id;
+      const Course = require('../models/courseModel');
+      const targetCourseId = await Course.resolveCourseId(req);
 
       // Issue #27 fix: Verify ownership/assignment of the task to this student
-      const tasks = await Task.getTasksForStudent(studentId);
+      const tasks = await Task.getTasksForStudent(studentId, targetCourseId);
       const isAssigned = tasks.some(t => t.id == id);
       if (!isAssigned) {
         return res.status(403).json({ message: 'Access denied. This task is not assigned to you.' });
@@ -65,13 +69,19 @@ const studentController = {
   async getMySubmissions(req, res) {
     try {
       const studentId = req.user.id;
+      const Course = require('../models/courseModel');
+      const targetCourseId = await Course.resolveCourseId(req);
+      const courseClause = targetCourseId ? ' AND (t.course_id = ? OR t.course_id IS NULL)' : '';
+      const params = [studentId];
+      if (targetCourseId) params.push(targetCourseId);
+
       const [rows] = await pool.execute(
         `SELECT s.*, t.title as task_title 
          FROM Submissions s 
          JOIN Tasks t ON s.task_id = t.id 
-         WHERE s.student_id = ? 
+         WHERE s.student_id = ?${courseClause}
          ORDER BY s.submitted_at DESC`,
-        [studentId]
+        params
       );
       res.json(rows);
     } catch (error) {
@@ -123,15 +133,24 @@ const studentController = {
   async getRecentActivity(req, res) {
     try {
       const studentId = req.user.id;
-      
+      const Course = require('../models/courseModel');
+      const targetCourseId = await Course.resolveCourseId(req);
+
+      const taskCourseClause = targetCourseId ? ' AND (t.course_id = ? OR t.course_id IS NULL)' : '';
+      const projCourseClause = targetCourseId ? ' AND p.course_id = ?' : '';
+      const taskParams = [studentId];
+      if (targetCourseId) taskParams.push(targetCourseId);
+      const projParams = [studentId];
+      if (targetCourseId) projParams.push(targetCourseId);
+
       // 1. Fetch recent task submissions
       const [submissions] = await pool.execute(
         `SELECT s.id, s.status, s.submitted_at as date, t.title as task_title, 'task_submission' as type 
          FROM Submissions s 
          JOIN Tasks t ON s.task_id = t.id 
-         WHERE s.student_id = ? 
+         WHERE s.student_id = ?${taskCourseClause}
          ORDER BY s.submitted_at DESC LIMIT 5`,
-        [studentId]
+        taskParams
       );
 
       // 2. Fetch recent main project steps progress
@@ -140,9 +159,9 @@ const studentController = {
          FROM StudentProgress sp 
          JOIN Projects p ON sp.project_id = p.id 
          JOIN Steps s ON sp.step_id = s.id 
-         WHERE sp.user_id = ? 
+         WHERE sp.user_id = ?${projCourseClause}
          ORDER BY sp.submitted_at DESC LIMIT 5`,
-        [studentId]
+        projParams
       );
 
       // 3. Fetch recent simple project steps progress
@@ -151,9 +170,9 @@ const studentController = {
          FROM StepProgress sp 
          JOIN Projects p ON sp.project_id = p.id 
          JOIN Steps s ON sp.step_id = s.id 
-         WHERE sp.user_id = ? AND sp.completed = TRUE 
+         WHERE sp.user_id = ? AND sp.completed = TRUE${projCourseClause}
          ORDER BY sp.completion_time DESC LIMIT 5`,
-        [studentId]
+        projParams
       );
 
       // 4. Fetch recent mock interviews

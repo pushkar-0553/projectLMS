@@ -1,9 +1,26 @@
 const Resume = require('../models/Resume');
+const Course = require('../models/courseModel');
 const cloudinaryService = require('../services/cloudinaryService');
 const pool = require('../config/db');
 const JSZip = require('jszip');
 const fs = require('fs');
 const path = require('path');
+
+// Helper to resolve course context
+async function resolveCourseId(req) {
+  let courseId = req.query?.courseId || req.body?.course_id || req.body?.courseId || req.params?.courseId || req.courseId;
+  if (!courseId) {
+    const slug = req.headers['x-course-slug'] || req.query?.courseSlug || req.params?.courseSlug;
+    if (slug) {
+      const course = await Course.findBySlug(slug);
+      if (course) courseId = course.id;
+    }
+  }
+  if (!courseId && req.user && req.user.role !== 'super_admin' && req.user.course_id) {
+    courseId = req.user.course_id;
+  }
+  return courseId ? parseInt(courseId, 10) : null;
+}
 
 // Helper to save file locally on disk if Cloudinary is unavailable or fails
 const saveLocalResume = (file) => {
@@ -65,13 +82,16 @@ const resumeController = {
         fileName = localResult.file_name;
       }
 
+      const targetCourseId = await resolveCourseId(req);
+
       // Create db record
       const result = await Resume.create({
         studentId,
         resumeTitle: resume_title || 'Resume',
         resumeFileName: fileName,
         cloudinaryPublicId,
-        cloudinaryUrl
+        cloudinaryUrl,
+        courseId: targetCourseId
       });
 
       res.status(201).json({
@@ -172,13 +192,16 @@ const resumeController = {
         fileName = localResult.file_name;
       }
 
+      const targetCourseId = oldResume.course_id || await resolveCourseId(req);
+
       // Save as a new version in the database
       const result = await Resume.create({
         studentId: oldResume.student_id,
         resumeTitle: resume_title || oldResume.resume_title || 'Resume',
         resumeFileName: fileName,
         cloudinaryPublicId,
-        cloudinaryUrl
+        cloudinaryUrl,
+        courseId: targetCourseId
       });
 
       res.json({
@@ -241,7 +264,8 @@ const resumeController = {
    */
   async getAllResumes(req, res) {
     try {
-      const students = await Resume.getAllStudentsWithResumeStatus();
+      const targetCourseId = await resolveCourseId(req);
+      const students = await Resume.getAllStudentsWithResumeStatus(targetCourseId);
       
       // Fetch notes and recruiter reviews for all students
       const studentsWithNotes = await Promise.all(
@@ -270,7 +294,8 @@ const resumeController = {
   async searchResumes(req, res) {
     try {
       const { query } = req.query;
-      const students = await Resume.getAllStudentsWithResumeStatus();
+      const targetCourseId = await resolveCourseId(req);
+      const students = await Resume.getAllStudentsWithResumeStatus(targetCourseId);
       
       let filtered = students;
       if (query) {
@@ -305,7 +330,8 @@ const resumeController = {
   async filterResumes(req, res) {
     try {
       const { domain, batch, status, date } = req.query;
-      let students = await Resume.getAllStudentsWithResumeStatus();
+      const targetCourseId = await resolveCourseId(req);
+      let students = await Resume.getAllStudentsWithResumeStatus(targetCourseId);
 
       // 1. Filter by Domain
       if (domain) {

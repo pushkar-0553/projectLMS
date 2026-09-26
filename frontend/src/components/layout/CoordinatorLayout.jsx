@@ -1,26 +1,31 @@
 import React from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
-import { BarChart3, Calendar, ClipboardList, GraduationCap, History, LayoutList, LogOut, Users, MessageSquare, FileText } from 'lucide-react'
+import { useCourse } from '../../context/CourseContext'
+import { BarChart3, Calendar, ClipboardList, GraduationCap, History, LayoutList, LogOut, Users, MessageSquare, FileText, BookOpen, Video } from 'lucide-react'
 import NotificationBell from '../notifications/NotificationBell';
 import MessagingIcon from '../messaging/MessagingIcon';
+import CourseSwitcher from '../common/CourseSwitcher';
 
 const CoordinatorLayout = ({ children }) => {
   const { user, logout } = useAuth()
+  const { courseSlug } = useCourse()
   const location = useLocation()
 
+  const baseCoord = courseSlug ? `/${courseSlug}/coordinator` : '/coordinator';
+
   const navItems = [
-    { path: '/coordinator', icon: Users, label: 'Students' },
-    { path: '/coordinator/subbatches', icon: LayoutList, label: 'Sub-Batches' },
-    { path: '/coordinator/tasks', icon: ClipboardList, label: 'Manage Tasks' },
-    { path: '/coordinator/academics', icon: GraduationCap, label: 'Academics' },
-    { path: '/coordinator/attendance', icon: Calendar, label: 'Attendance' },
-    { path: '/resumes', icon: FileText, label: 'Resume Hub' },
+    { path: baseCoord, icon: Users, label: 'Students' },
+    { path: `${baseCoord}/subbatches`, icon: LayoutList, label: 'Sub-Batches' },
+    { path: `${baseCoord}/tasks`, icon: ClipboardList, label: 'Manage Tasks' },
+    { path: `${baseCoord}/academics`, icon: GraduationCap, label: 'Academics' },
+    { path: `${baseCoord}/attendance`, icon: Calendar, label: 'Attendance' },
+    { path: courseSlug ? `/${courseSlug}/resumes` : '/resumes', icon: FileText, label: 'Resume Hub' },
     ...(user?.role === 'faculty' ? [
-      { path: '/coordinator/guidance', icon: BookOpen, label: 'Guidance' },
-      { path: '/coordinator/interviews', icon: Video, label: 'Mock Interviews' }
+      { path: `${baseCoord}/guidance`, icon: BookOpen, label: 'Guidance' },
+      { path: `${baseCoord}/interviews`, icon: Video, label: 'Mock Interviews' }
     ] : []),
-    { path: '/coordinator/history', icon: History, label: 'My History' }
+    { path: `${baseCoord}/history`, icon: History, label: 'My History' }
   ]
 
   return (
@@ -51,7 +56,7 @@ const CoordinatorLayout = ({ children }) => {
             <div className="user-avatar">{user?.name?.charAt(0)?.toUpperCase() || 'U'}</div>
             <div className="user-details">
               <div className="user-name">{user?.name}</div>
-              <div className="user-role">{user?.role === 'faculty' ? 'Senior Faculty' : 'LMS Coordinator'}</div>
+              <div className="user-role">{user?.role === 'super_admin' ? 'Super Admin' : user?.role === 'faculty' ? 'Senior Faculty' : 'LMS Coordinator'}</div>
             </div>
           </div>
           <button className="logout-btn" onClick={logout}>
@@ -65,7 +70,8 @@ const CoordinatorLayout = ({ children }) => {
           <div className="header-search">
             <input type="text" placeholder="Search students, batches..." className="header-search-input" />
           </div>
-          <div className="header-actions" style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          <div className="header-actions" style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+            <CourseSwitcher />
             <MessagingIcon />
             <NotificationBell />
           </div>

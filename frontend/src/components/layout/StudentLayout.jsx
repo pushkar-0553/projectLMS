@@ -1,22 +1,27 @@
 import React from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
+import { useCourse } from '../../context/CourseContext'
 import { BarChart3, BookOpen, Calendar, ClipboardList, GraduationCap, KeyRound, LogOut, TrendingUp, MessageSquare } from 'lucide-react'
 import NotificationBell from '../notifications/NotificationBell';
 import MessagingIcon from '../messaging/MessagingIcon';
+import CourseSwitcher from '../common/CourseSwitcher';
 
 const StudentLayout = ({ children }) => {
   const { user, logout } = useAuth()
+  const { courseSlug } = useCourse()
   const location = useLocation()
 
+  const baseStudent = courseSlug ? `/${courseSlug}` : '';
+
   const navItems = [
-    { path: '/dashboard', icon: BarChart3, label: 'Dashboard' },
-    { path: '/project-learning', icon: BookOpen, label: 'Project Learning' },
-    { path: '/student/tasks', icon: ClipboardList, label: 'Learning Tasks' },
-    { path: '/my-progress', icon: TrendingUp, label: 'Project Progress' },
-    { path: '/academic-progress', icon: GraduationCap, label: 'Academic Progress' },
-    { path: '/student/attendance', icon: Calendar, label: 'My Attendance' },
-    { path: '/change-password', icon: KeyRound, label: 'Change Password' }
+    { path: `${baseStudent}/dashboard`, icon: BarChart3, label: 'Dashboard' },
+    { path: `${baseStudent}/project-learning`, icon: BookOpen, label: 'Project Learning' },
+    { path: `${baseStudent}/student/tasks`, icon: ClipboardList, label: 'Learning Tasks' },
+    { path: `${baseStudent}/my-progress`, icon: TrendingUp, label: 'Project Progress' },
+    { path: `${baseStudent}/academic-progress`, icon: GraduationCap, label: 'Academic Progress' },
+    { path: `${baseStudent}/student/attendance`, icon: Calendar, label: 'My Attendance' },
+    { path: `${baseStudent}/change-password`, icon: KeyRound, label: 'Change Password' }
   ]
 
   return (
@@ -61,7 +66,8 @@ const StudentLayout = ({ children }) => {
           <div className="header-greeting">
             Welcome back, <strong>{user?.name}</strong>
           </div>
-          <div className="header-actions" style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          <div className="header-actions" style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+            <CourseSwitcher />
             <MessagingIcon />
             <NotificationBell />
           </div>

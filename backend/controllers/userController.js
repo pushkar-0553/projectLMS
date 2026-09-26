@@ -6,27 +6,33 @@ const userController = {
   // Get all students (for admin)
   async getAllStudents(req, res) {
     try {
-      const students = await User.findByRole('student')
-      res.json(students)
+      const Course = require('../models/courseModel');
+      const targetCourseId = await Course.resolveCourseId(req);
+      const students = await User.findByRole('student', targetCourseId);
+      res.json(students);
     } catch (error) {
-      console.error('Get all students error:', error)
-      res.status(500).json({ message: 'Server error' })
+      console.error('Get all students error:', error);
+      res.status(500).json({ message: 'Server error' });
     }
   },
 
   // Create student (admin only)
   async createStudent(req, res) {
     try {
-      const { name, email, mobile, batch, password } = req.body
+      const { name, email, mobile, batch, password, courseId } = req.body;
 
       // Check if email already exists
-      const existingUser = await User.findByEmail(email)
+      const existingUser = await User.findByEmail(email);
       if (existingUser) {
-        return res.status(400).json({ message: 'Email already registered' })
+        return res.status(400).json({ message: 'Email already registered' });
       }
 
       // Hash password
-      const hashedPassword = await bcrypt.hash(password || 'student123', 10)
+      const hashedPassword = await bcrypt.hash(password || 'student123', 10);
+
+      // Resolve target course
+      const Course = require('../models/courseModel');
+      const targetCourseId = courseId || await Course.resolveCourseId(req);
 
       // Create user with additional fields
       const userId = await User.create({
@@ -36,7 +42,32 @@ const userController = {
         role: 'student',
         mobile,
         batch
-      })
+      });
+
+      // Auto-enroll in course membership
+      if (targetCourseId) {
+        const CourseMembership = require('../models/courseMembershipModel');
+        await CourseMembership.enroll({
+          userId,
+          courseId: targetCourseId,
+          role: 'student'
+        });
+
+        // If batch provided, map into StudentBatchMap
+        if (batch) {
+          let batchId = parseInt(batch, 10);
+          if (isNaN(batchId)) {
+            const [bRows] = await pool.execute('SELECT id FROM Batches WHERE name = ? AND course_id = ? LIMIT 1', [batch, targetCourseId]);
+            if (bRows.length > 0) batchId = bRows[0].id;
+          }
+          if (batchId && !isNaN(batchId)) {
+            await pool.execute(
+              'INSERT IGNORE INTO StudentBatchMap (student_id, batch_id) VALUES (?, ?)',
+              [userId, batchId]
+            );
+          }
+        }
+      }
 
       res.status(201).json({
         message: 'Student created successfully',
@@ -46,12 +77,13 @@ const userController = {
           email,
           mobile,
           batch,
-          role: 'student'
+          role: 'student',
+          course_id: targetCourseId
         }
-      })
+      });
     } catch (error) {
-      console.error('Create student error:', error)
-      res.status(500).json({ message: 'Server error' })
+      console.error('Create student error:', error);
+      res.status(500).json({ message: 'Server error' });
     }
   },
 
@@ -195,7 +227,7 @@ const userController = {
   // Create faculty (admin only)
   async createFaculty(req, res) {
     try {
-      const { name, email, mobile, password, specialisation, bio } = req.body;
+      const { name, email, mobile, password, specialisation, bio, courseId } = req.body;
 
       if (!name || !email) {
         return res.status(400).json({ message: 'Name and email are required' });
@@ -209,6 +241,10 @@ const userController = {
 
       // Hash password (default: faculty123)
       const hashedPassword = await bcrypt.hash(password || 'faculty123', 10);
+
+      // Resolve target course
+      const Course = require('../models/courseModel');
+      const targetCourseId = courseId || await Course.resolveCourseId(req);
 
       // Create faculty user
       const userId = await User.create({
@@ -225,13 +261,24 @@ const userController = {
         [userId, specialisation || '', bio || '']
       );
 
+      // Auto-enroll in course membership
+      if (targetCourseId) {
+        const CourseMembership = require('../models/courseMembershipModel');
+        await CourseMembership.enroll({
+          userId,
+          courseId: targetCourseId,
+          role: 'faculty'
+        });
+      }
+
       res.status(201).json({
         message: 'Faculty created successfully',
         faculty: {
           id: userId,
           name,
           email,
-          role: 'faculty'
+          role: 'faculty',
+          course_id: targetCourseId
         }
       });
     } catch (error) {
@@ -243,7 +290,9 @@ const userController = {
   // Get all faculties (admin only)
   async getAllFaculties(req, res) {
     try {
-      const faculties = await User.findByRole('faculty');
+      const Course = require('../models/courseModel');
+      const targetCourseId = await Course.resolveCourseId(req);
+      const faculties = await User.findByRole('faculty', targetCourseId);
       
       // Fetch batches for each faculty
       const facultiesWithBatches = await Promise.all(faculties.map(async (faculty) => {
@@ -270,6 +319,20 @@ const userController = {
       
       if (!students || !Array.isArray(students) || students.length === 0) {
         return res.status(400).json({ message: 'No student data provided' });
+      }
+
+      // Resolve course context
+      let targetCourseId = req.body.courseId || req.body.course_id || req.courseId;
+      if (!targetCourseId && req.headers['x-course-slug']) {
+        const Course = require('../models/courseModel');
+        const c = await Course.findBySlug(req.headers['x-course-slug']);
+        if (c) targetCourseId = c.id;
+      }
+      if (!targetCourseId && req.user && req.user.course_id && req.user.role !== 'super_admin') {
+        targetCourseId = req.user.course_id;
+      }
+      if (!targetCourseId) {
+        targetCourseId = 1; // Default to MERN course
       }
 
       // Check for existing emails
@@ -299,10 +362,33 @@ const userController = {
 
       const insertedCount = await User.bulkCreate(hashedStudents);
 
+      // Fetch newly created users and enroll in CourseMemberships & StudentBatchMap
+      const [createdUsers] = await pool.query('SELECT id, email, batch FROM Users WHERE email IN (?)', [newStudentsData.map(s => s.email)]);
+      for (const u of createdUsers) {
+        await pool.execute(
+          'INSERT IGNORE INTO CourseMemberships (course_id, user_id, role, status) VALUES (?, ?, "student", "active")',
+          [targetCourseId, u.id]
+        );
+        if (u.batch) {
+          let batchId = parseInt(u.batch, 10);
+          if (isNaN(batchId)) {
+            const [bRows] = await pool.execute('SELECT id FROM Batches WHERE name = ? AND course_id = ? LIMIT 1', [u.batch, targetCourseId]);
+            if (bRows.length > 0) batchId = bRows[0].id;
+          }
+          if (batchId && !isNaN(batchId)) {
+            await pool.execute(
+              'INSERT IGNORE INTO StudentBatchMap (student_id, batch_id) VALUES (?, ?)',
+              [u.id, batchId]
+            );
+          }
+        }
+      }
+
       res.status(201).json({
         message: `Successfully imported ${insertedCount} students`,
         skippedCount: existingEmails.length,
-        totalCount: students.length
+        totalCount: students.length,
+        courseId: targetCourseId
       });
     } catch (error) {
       console.error('Bulk create students error:', error);
@@ -317,8 +403,8 @@ const userController = {
       const pool = require('../config/db');
       const AttendanceModel = require('../models/attendanceModel');
 
-      // Security check: Only allow coordinator, faculty, admin, OR the student owner themselves
-      if (!['coordinator', 'faculty', 'admin'].includes(req.user.role) && req.user.id !== parseInt(id)) {
+      // Security check: Only allow coordinator, faculty, admin, super_admin, OR the student owner themselves
+      if (!['coordinator', 'faculty', 'admin', 'super_admin'].includes(req.user.role) && req.user.id !== parseInt(id)) {
         return res.status(403).json({ message: 'Access denied. You cannot view this profile.' });
       }
 
@@ -328,10 +414,32 @@ const userController = {
         return res.status(404).json({ message: 'Student not found' });
       }
 
+      // Enrolled courses
+      const [courseRows] = await pool.execute(
+        `SELECT c.id, c.name, c.code, c.slug, cm.role, cm.status, cm.enrolled_at
+         FROM Courses c
+         JOIN CourseMemberships cm ON c.id = cm.course_id
+         WHERE cm.user_id = ? AND cm.status = 'active'`,
+        [id]
+      );
+
       // Current batch
       const currentBatch = await AttendanceModel.getStudentBatch(id);
 
       // Project progress (last 20 submissions)
+      let courseFilter = '';
+      const progressParams = [id];
+      let profileCourseId = req.query.courseId;
+      if (!profileCourseId && req.headers['x-course-slug']) {
+        const Course = require('../models/courseModel');
+        const c = await Course.findBySlug(req.headers['x-course-slug']);
+        if (c) profileCourseId = c.id;
+      }
+      if (profileCourseId) {
+        courseFilter = ' AND p.course_id = ?';
+        progressParams.push(profileCourseId);
+      }
+
       const [progressRows] = await pool.execute(
         `SELECT sp.id, sp.status, sp.submitted_at, sp.reviewed_at, sp.feedback,
                 p.title as project_title, p.level,
@@ -339,10 +447,10 @@ const userController = {
          FROM StudentProgress sp
          JOIN Projects p ON sp.project_id = p.id
          JOIN Steps s ON sp.step_id = s.id
-         WHERE sp.user_id = ?
+         WHERE sp.user_id = ?${courseFilter}
          ORDER BY sp.submitted_at DESC
          LIMIT 20`,
-        [id]
+        progressParams
       );
 
       // Attendance summary (last 30 days)
@@ -373,7 +481,14 @@ const userController = {
       const rejected = progressRows.filter(p => p.status === 'rejected').length;
 
       res.json({
-        student,
+        student: {
+          ...student,
+          course_name: courseRows[0]?.name || null,
+          course_code: courseRows[0]?.code || null,
+          course_slug: courseRows[0]?.slug || null,
+          courses: courseRows
+        },
+        courses: courseRows,
         currentBatch,
         progress: progressRows,
         progressStats: { approved, pending, rejected, total: progressRows.length },
@@ -389,7 +504,16 @@ const userController = {
   async getAllBatchesForAssignment(req, res) {
     try {
       const AttendanceModel = require('../models/attendanceModel');
-      const batches = await AttendanceModel.getAllActiveBatches();
+      let courseId = req.query.courseId;
+      if (!courseId && req.headers['x-course-slug']) {
+        const Course = require('../models/courseModel');
+        const c = await Course.findBySlug(req.headers['x-course-slug']);
+        if (c) courseId = c.id;
+      }
+      if (!courseId && req.user && req.user.course_id && req.user.role !== 'super_admin') {
+        courseId = req.user.course_id;
+      }
+      const batches = await AttendanceModel.getAllActiveBatches(courseId);
       res.json(batches);
     } catch (error) {
       console.error('getAllBatchesForAssignment error:', error);

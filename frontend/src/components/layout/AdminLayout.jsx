@@ -1,24 +1,32 @@
 import React from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
-import { BarChart3, BookOpen, GraduationCap, History, Layers, LogOut, UserCog, Users, UserCheck, MessageSquare, FileText } from 'lucide-react'
+import { useCourse } from '../../context/CourseContext'
+import { BarChart3, BookOpen, GraduationCap, History, Layers, LogOut, UserCog, Users, UserCheck, MessageSquare, FileText, Shield } from 'lucide-react'
 import NotificationBell from '../notifications/NotificationBell';
 import MessagingIcon from '../messaging/MessagingIcon';
+import CourseSwitcher from '../common/CourseSwitcher';
 
 const AdminLayout = ({ children }) => {
   const { user, logout } = useAuth()
+  const { courseSlug } = useCourse()
   const location = useLocation()
 
+  const baseAdmin = courseSlug ? `/${courseSlug}/admin` : '/admin';
+
   const navItems = [
-    { path: '/admin', icon: BarChart3, label: 'Dashboard' },
-    { path: '/admin/projects', icon: BookOpen, label: 'Projects' },
-    { path: '/admin/students', icon: Users, label: 'Students' },
-    { path: '/admin/coordinators', icon: GraduationCap, label: 'Coordinators' },
-    { path: '/admin/faculties', icon: UserCheck, label: 'Faculty' },
-    { path: '/admin/batches', icon: Layers, label: 'Batches' },
-    { path: '/resumes', icon: FileText, label: 'Resume Hub' },
-    { path: '/admin/users', icon: UserCog, label: 'Users' },
-    { path: '/admin/history', icon: History, label: 'System History' }
+    { path: baseAdmin, icon: BarChart3, label: 'Dashboard' },
+    { path: `${baseAdmin}/projects`, icon: BookOpen, label: 'Projects' },
+    { path: `${baseAdmin}/students`, icon: Users, label: 'Students' },
+    { path: `${baseAdmin}/coordinators`, icon: GraduationCap, label: 'Coordinators' },
+    { path: `${baseAdmin}/faculties`, icon: UserCheck, label: 'Faculty' },
+    { path: `${baseAdmin}/batches`, icon: Layers, label: 'Batches' },
+    { path: courseSlug ? `/${courseSlug}/resumes` : '/resumes', icon: FileText, label: 'Resume Hub' },
+    { path: `${baseAdmin}/users`, icon: UserCog, label: 'Users' },
+    { path: `${baseAdmin}/history`, icon: History, label: 'System History' },
+    ...(user?.role === 'super_admin' ? [
+      { path: '/super-admin/overview', icon: Shield, label: 'Platform Console', isSpecial: true }
+    ] : [])
   ]
 
   return (
@@ -35,7 +43,11 @@ const AdminLayout = ({ children }) => {
           <ul className="nav-list">
             {navItems.map((item) => (
               <li key={item.path} className="nav-item">
-                <Link to={item.path} className={`nav-link ${location.pathname === item.path ? 'active' : ''}`}>
+                <Link 
+                  to={item.path} 
+                  className={`nav-link ${location.pathname === item.path ? 'active' : ''}`}
+                  style={item.isSpecial ? { color: '#38bdf8', borderLeftColor: '#38bdf8' } : undefined}
+                >
                   <item.icon size={20} />
                   <span className="nav-label">{item.label}</span>
                 </Link>
@@ -49,7 +61,7 @@ const AdminLayout = ({ children }) => {
             <div className="user-avatar">{user?.name?.charAt(0)?.toUpperCase()}</div>
             <div className="user-details">
               <div className="user-name">{user?.name}</div>
-              <div className="user-role">Administrator</div>
+              <div className="user-role">{user?.role === 'super_admin' ? 'Super Admin' : 'Administrator'}</div>
             </div>
           </div>
           <button className="logout-btn" onClick={logout}>
@@ -63,7 +75,8 @@ const AdminLayout = ({ children }) => {
           <div className="header-search">
             <input type="text" placeholder="Global system search..." className="header-search-input" />
           </div>
-          <div className="header-actions" style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          <div className="header-actions" style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+            <CourseSwitcher />
             <MessagingIcon />
             <NotificationBell />
           </div>

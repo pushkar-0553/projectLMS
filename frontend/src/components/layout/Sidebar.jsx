@@ -12,9 +12,9 @@ const Sidebar = () => {
 
   const navItems = [
     {
-      path: user?.role === 'admin' ? '/admin' : '/dashboard',
+      path: user?.role === 'super_admin' ? '/super-admin/overview' : user?.role === 'admin' ? '/admin' : (user?.role === 'coordinator' || user?.role === 'faculty') ? '/coordinator' : '/dashboard',
       icon: '🏠',
-      label: user?.role === 'admin' ? 'Admin Dashboard' : 'Dashboard'
+      label: user?.role === 'super_admin' ? 'Super Admin' : user?.role === 'admin' ? 'Admin Dashboard' : (user?.role === 'coordinator' || user?.role === 'faculty') ? 'Coordinator Portal' : 'Dashboard'
     }
   ]
 

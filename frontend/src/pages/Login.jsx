@@ -31,15 +31,22 @@ const Login = () => {
       const result = await login(formData.email, formData.password)
 
       if (result.success) {
-        const userRole = result.user?.role
-        if (userRole === 'admin') {
-          navigate('/admin')
-        } else if (userRole === 'coordinator') {
-          navigate('/coordinator')
-        } else if (userRole === 'faculty') {
-          navigate('/faculty')
+        const u = result.user;
+        const primarySlug = u?.primaryCourse?.course_slug || u?.courses?.[0]?.course_slug;
+        if (primarySlug) {
+          localStorage.setItem('activeCourseSlug', primarySlug);
+        }
+
+        if (u?.role === 'super_admin') {
+          navigate('/super-admin/overview');
+        } else if (u?.role === 'admin') {
+          navigate(primarySlug ? `/${primarySlug}/admin` : '/admin');
+        } else if (u?.role === 'coordinator') {
+          navigate(primarySlug ? `/${primarySlug}/coordinator` : '/coordinator');
+        } else if (u?.role === 'faculty') {
+          navigate(primarySlug ? `/${primarySlug}/faculty` : '/faculty');
         } else {
-          navigate('/dashboard')
+          navigate(primarySlug ? `/${primarySlug}/dashboard` : '/dashboard');
         }
       } else {
         setError(result.error)

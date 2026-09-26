@@ -30,7 +30,11 @@ class Progress {
     return rows[0];
   }
 
-  static async getUserOverallProgress(userId) {
+  static async getUserOverallProgress(userId, courseId = null) {
+    const courseClause = courseId ? ' WHERE p.course_id = ?' : '';
+    const params = [userId];
+    if (courseId) params.push(courseId);
+
     const [rows] = await pool.execute(`
       SELECT 
         p.id as project_id,
@@ -45,24 +49,33 @@ class Progress {
         FROM Steps 
         GROUP BY project_id
       ) s ON p.id = s.project_id
+      ${courseClause}
       ORDER BY p.level, p.id
-    `, [userId]);
+    `, params);
     return rows;
   }
 
-  static async getCompletedProjectsCount(userId) {
+  static async getCompletedProjectsCount(userId, courseId = null) {
+    const courseClause = courseId ? ' AND p.course_id = ?' : '';
+    const params = [userId];
+    if (courseId) params.push(courseId);
+
     const [rows] = await pool.execute(`
       SELECT COUNT(*) as count FROM Progress pr
       JOIN Projects p ON pr.project_id = p.id
       JOIN Steps s ON p.id = s.project_id
       WHERE pr.user_id = ? AND pr.step_completed >= (
         SELECT COUNT(*) FROM Steps WHERE project_id = p.id
-      )
-    `, [userId]);
-    return rows[0].count;
+      ) ${courseClause}
+    `, params);
+    return rows[0] ? rows[0].count : 0;
   }
 
-  static async getCurrentActiveProject(userId) {
+  static async getCurrentActiveProject(userId, courseId = null) {
+    const courseClause = courseId ? ' AND p.course_id = ?' : '';
+    const params = [userId];
+    if (courseId) params.push(courseId);
+
     const [rows] = await pool.execute(`
       SELECT p.*, pr.step_completed, s.total_steps
       FROM Projects p
@@ -72,11 +85,11 @@ class Progress {
         FROM Steps 
         GROUP BY project_id
       ) s ON p.id = s.project_id
-      WHERE pr.user_id = ? AND pr.step_completed < s.total_steps
+      WHERE pr.user_id = ? AND pr.step_completed < s.total_steps ${courseClause}
       ORDER BY p.level, p.id
       LIMIT 1
-    `, [userId]);
-    return rows[0];
+    `, params);
+    return rows[0] || null;
   }
 }
 

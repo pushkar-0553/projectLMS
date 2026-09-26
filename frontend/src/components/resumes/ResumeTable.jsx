@@ -106,6 +106,11 @@ const ResumeTable = ({
                     <td style={styles.td}>
                       <span style={styles.batchBadge}>
                         {student.batch_name || student.batch || 'Unassigned'}
+                        {student.course_code && (
+                          <span style={{ marginLeft: '4px', fontSize: '10px', color: '#4338ca', fontWeight: 'bold' }}>
+                            [{student.course_code}]
+                          </span>
+                        )}
                       </span>
                     </td>
                     <td style={styles.td}>

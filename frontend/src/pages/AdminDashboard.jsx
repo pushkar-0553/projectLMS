@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import { useCourse } from '../context/CourseContext'
 import { projectAPI, adminAPI, userAPI } from '../services/api'
 import Button from '../components/common/Button'
 import ProjectUploadForm from '../components/forms/ProjectUploadForm'
@@ -8,6 +9,8 @@ import { BookOpen, Users, Upload, Clock, Activity, Settings, User, Eye, Trash2, 
 
 const AdminDashboard = () => {
   const { user } = useAuth()
+  const { courseSlug } = useCourse()
+  const baseAdmin = courseSlug ? `/${courseSlug}/admin` : '/admin'
   const [projects, setProjects] = useState([])
   const [activityLogs, setActivityLogs] = useState([])
   const [showUploadForm, setShowUploadForm] = useState(false)
@@ -74,12 +77,12 @@ const AdminDashboard = () => {
               <p>Here's what's happening in your digital learning platform today.</p>
             </div>
             <div className="header-actions">
-              <Link to="/admin/students" className="action-link">
+              <Link to={`${baseAdmin}/students`} className="action-link">
                 <Button className="btn-glass">
                   <Users className="icon-sm" /> Manage Students
                 </Button>
               </Link>
-              <Link to="/admin/faculties" className="action-link">
+              <Link to={`${baseAdmin}/faculties`} className="action-link">
                 <Button className="btn-glass">
                   <UserCheck className="icon-sm" /> Manage Faculty
                 </Button>
@@ -212,7 +215,7 @@ const AdminDashboard = () => {
 
             {projects.length > 5 && (
               <div className="card-footer">
-                <Link to="/admin/projects" className="view-all-link">
+                <Link to={`${baseAdmin}/projects`} className="view-all-link">
                   View All <ChevronRight className="icon-xs" />
                 </Link>
               </div>
@@ -222,7 +225,7 @@ const AdminDashboard = () => {
           <aside className="activity-card">
             <div className="card-header">
               <h2>Recent Activity</h2>
-              <Link to="/admin/history">
+              <Link to={`${baseAdmin}/history`}>
                 <Shield className="icon-sm text-primary" />
               </Link>
             </div>
@@ -249,7 +252,7 @@ const AdminDashboard = () => {
               )}
             </div>
             <div className="card-footer">
-              <Link to="/admin/history" className="view-all-link">
+              <Link to={`${baseAdmin}/history`} className="view-all-link">
                 View Audit Log <ChevronRight className="icon-xs" />
               </Link>
             </div>

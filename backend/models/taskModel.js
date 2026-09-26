@@ -1,10 +1,10 @@
 const pool = require('../config/db');
 
 class Task {
-  static async create({ title, description, file_path, created_by, assigned_type, deadline }) {
+  static async create({ course_id, title, description, file_path, created_by, assigned_type, deadline }) {
     const [result] = await pool.execute(
-      'INSERT INTO Tasks (title, description, file_path, created_by, assigned_type, deadline) VALUES (?, ?, ?, ?, ?, ?)',
-      [title, description, file_path, created_by, assigned_type, deadline]
+      'INSERT INTO Tasks (course_id, title, description, file_path, created_by, assigned_type, deadline) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [course_id || null, title, description, file_path, created_by, assigned_type, deadline]
     );
     return result.insertId;
   }
@@ -17,7 +17,17 @@ class Task {
     return result.insertId;
   }
 
-  static async getTasksByCoordinator(coordinatorId) {
+  static async getTasksByCoordinator(coordinatorId, courseId = null) {
+    if (courseId) {
+      const [rows] = await pool.execute(
+        `SELECT t.*, 
+          (SELECT COUNT(*) FROM TaskAssignments WHERE task_id = t.id) as assignment_count,
+          (SELECT COUNT(*) FROM Submissions WHERE task_id = t.id) as submission_count
+        FROM Tasks t WHERE t.created_by = ? AND (t.course_id = ? OR t.course_id IS NULL) ORDER BY t.created_at DESC`,
+        [coordinatorId, courseId]
+      );
+      return rows;
+    }
     const [rows] = await pool.execute(
       `SELECT t.*, 
         (SELECT COUNT(*) FROM TaskAssignments WHERE task_id = t.id) as assignment_count,
@@ -28,19 +38,24 @@ class Task {
     return rows;
   }
 
-  static async getTasksForStudent(studentId) {
+  static async getTasksForStudent(studentId, courseId = null) {
     // This query gets tasks assigned to the student directly, OR to their batch, OR to their sub-batch
+    const courseClause = courseId ? ' AND (t.course_id = ? OR t.course_id IS NULL)' : '';
+    const params = [studentId, studentId, studentId];
+    if (courseId) params.push(courseId);
+
     const [rows] = await pool.execute(
       `SELECT DISTINCT t.*, s.status as submission_status, s.status as review_status
        FROM Tasks t
        JOIN TaskAssignments ta_map ON t.id = ta_map.task_id
        LEFT JOIN Submissions s ON t.id = s.task_id AND s.student_id = ?
-       LEFT JOIN StudentBatchMap sbm ON sbm.user_id = ?
-       WHERE ta_map.student_id = ? 
+       LEFT JOIN StudentBatchMap sbm ON sbm.student_id = ?
+       WHERE (ta_map.student_id = ? 
           OR ta_map.sub_batch_id = sbm.sub_batch_id
-          OR (ta_map.batch_id = sbm.batch_id AND ta_map.sub_batch_id IS NULL AND ta_map.student_id IS NULL)
+          OR (ta_map.batch_id = sbm.batch_id AND ta_map.sub_batch_id IS NULL AND ta_map.student_id IS NULL))
+          ${courseClause}
        ORDER BY t.created_at DESC`,
-      [studentId, studentId, studentId]
+      params
     );
     return rows;
   }

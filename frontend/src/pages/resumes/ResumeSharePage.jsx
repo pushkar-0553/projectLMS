@@ -249,6 +249,11 @@ const ResumeSharePage = () => {
           <div style={styles.branding}>
             <span style={styles.logoIcon}>🎓</span>
             <span style={styles.logoText}>VCUBE Placements</span>
+            {collection?.course_name && (
+              <span style={{ fontSize: '13px', color: '#6366f1', background: '#eef2ff', padding: '3px 8px', borderRadius: '6px', fontWeight: '600', marginLeft: '8px' }}>
+                {collection.course_name}
+              </span>
+            )}
           </div>
           <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
             <button
@@ -279,7 +284,7 @@ const ResumeSharePage = () => {
               </span>
             </div>
 
-            {(collection.company_name || collection.salary || collection.jd) && (
+            {(collection.company_name || collection.salary || collection.jd || collection.course_name) && (
               <div style={{
                 marginTop: '16px',
                 paddingTop: '16px',
@@ -289,6 +294,22 @@ const ResumeSharePage = () => {
                 gap: '10px'
               }}>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px' }}>
+                  {collection.course_name && (
+                    <span style={{
+                      background: '#f5f3ff',
+                      color: '#6d28d9',
+                      border: '1px solid #ddd6fe',
+                      padding: '4px 10px',
+                      borderRadius: '8px',
+                      fontSize: '13px',
+                      fontWeight: '600',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '4px'
+                    }}>
+                      📚 Course: <strong>{collection.course_name}</strong> {collection.course_code ? `(${collection.course_code})` : ''}
+                    </span>
+                  )}
                   {collection.company_name && (
                     <span style={{
                       background: '#eff6ff',

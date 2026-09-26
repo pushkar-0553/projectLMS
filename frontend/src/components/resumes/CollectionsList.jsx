@@ -48,7 +48,14 @@ const CollectionsList = ({ collections = [], onRefresh }) => {
             <div key={col.id} style={styles.collectionItem}>
               <div style={styles.itemHeader}>
                 <div style={styles.titleSec}>
-                  <strong style={styles.colTitle}>📂 {col.title}</strong>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                    <strong style={styles.colTitle}>📂 {col.title}</strong>
+                    {col.course_name && (
+                      <span style={{ fontSize: '11px', color: '#4f46e5', background: '#eef2ff', border: '1px solid #c7d2fe', padding: '1px 6px', borderRadius: '4px', fontWeight: '600' }}>
+                        {col.course_code || col.course_name}
+                      </span>
+                    )}
+                  </div>
                   <span style={styles.candidateCount}>
                     👤 {col.student_count} {col.student_count === 1 ? 'candidate' : 'candidates'}
                   </span>

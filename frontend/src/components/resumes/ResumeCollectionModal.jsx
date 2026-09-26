@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { resumeAPI } from '../../services/api';
 
-const ResumeCollectionModal = ({ selectedStudentIds = [], onClose, onSuccess }) => {
+const ResumeCollectionModal = ({ selectedStudentIds = [], onClose, onSuccess, courseId, courseName }) => {
   const [title, setTitle] = useState('');
   const [companyName, setCompanyName] = useState('');
   const [salary, setSalary] = useState('');
@@ -27,7 +27,8 @@ const ResumeCollectionModal = ({ selectedStudentIds = [], onClose, onSuccess }) 
         student_ids: selectedStudentIds,
         company_name: companyName,
         salary,
-        jd
+        jd,
+        course_id: courseId
       });
 
       // Construct absolute share link url
@@ -60,6 +61,24 @@ const ResumeCollectionModal = ({ selectedStudentIds = [], onClose, onSuccess }) 
 
         {!shareLink ? (
           <form onSubmit={handleSubmit} style={styles.form}>
+            {courseName && (
+              <div style={{
+                background: '#eff6ff',
+                border: '1px solid #bfdbfe',
+                borderRadius: '8px',
+                padding: '8px 12px',
+                marginBottom: '10px',
+                fontSize: '13px',
+                color: '#1d4ed8',
+                fontWeight: '600',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px'
+              }}>
+                <span>📚 Course:</span>
+                <span>{courseName}</span>
+              </div>
+            )}
             <p style={styles.infoText}>
               You have selected <strong>{selectedStudentIds.length}</strong> {selectedStudentIds.length === 1 ? 'student' : 'students'}. Provide a name for this collection to generate a shareable link.
             </p>

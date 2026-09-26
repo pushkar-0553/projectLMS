@@ -1,7 +1,7 @@
-require('dotenv').config();
+const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '.env') });
 const express = require('express');
 const cors = require('cors');
-const path = require('path');
 const authRoutes = require('./routes/authRoutes');
 const projectRoutes = require('./routes/projectRoutes');
 const userRoutes = require('./routes/userRoutes');
@@ -17,6 +17,8 @@ const messageRoutes = require('./routes/messageRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
 const resumeRoutes = require('./routes/resumeRoutes');
 const publicResumeRoutes = require('./routes/publicResumeRoutes');
+const courseRoutes = require('./routes/courseRoutes');
+const superAdminRoutes = require('./routes/superAdminRoutes');
 
 const http = require('http');
 const { initSocket } = require('./socket');
@@ -70,6 +72,8 @@ app.use('/api/messages', messageRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api', resumeRoutes);
 app.use('/api', publicResumeRoutes);
+app.use('/api/courses', courseRoutes);
+app.use('/api/super-admin', superAdminRoutes);
 
 app.get('/', (req, res) => {
   res.json({ message: 'Project Learning Module API is running' });

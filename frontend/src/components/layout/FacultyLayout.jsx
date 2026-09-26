@@ -1,6 +1,7 @@
 import React from 'react';
 import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { useCourse } from '../../context/CourseContext';
 import { 
   Users, Calendar, Video, Award, Settings, LogOut, Bell, 
   BookOpen, UserCheck, BarChart3, GraduationCap, Clock, ChevronRight,
@@ -11,6 +12,7 @@ import MessagingIcon from '../messaging/MessagingIcon';
 
 const FacultyLayout = () => {
   const { user, logout } = useAuth();
+  const { courseSlug } = useCourse();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -19,16 +21,18 @@ const FacultyLayout = () => {
     navigate('/login');
   };
 
+  const baseFaculty = courseSlug ? `/${courseSlug}/faculty` : '/faculty';
+
   const menuItems = [
-    { path: '/faculty', label: 'Overview', icon: BarChart3 },
-    { path: '/faculty/student-monitoring', label: 'Student Monitoring', icon: Users },
-    { path: '/resumes', label: 'Resume Hub', icon: FileText },
-    { path: '/faculty/projects', label: 'Projects Management', icon: Target },
-    { path: '/faculty/guidance', label: 'Academic Guidance', icon: BookOpen },
-    { path: '/faculty/interviews', label: 'Mock Interviews', icon: Video },
-    { path: '/faculty/sessions', label: 'Live Classes', icon: Calendar },
-    { path: '/faculty/performance', label: 'Performance', icon: Award },
-    { path: '/faculty/history', label: 'Activity History', icon: Clock },
+    { path: baseFaculty, label: 'Overview', icon: BarChart3 },
+    { path: `${baseFaculty}/student-monitoring`, label: 'Student Monitoring', icon: Users },
+    { path: courseSlug ? `/${courseSlug}/resumes` : '/resumes', label: 'Resume Hub', icon: FileText },
+    { path: `${baseFaculty}/projects`, label: 'Projects Management', icon: Target },
+    { path: `${baseFaculty}/guidance`, label: 'Academic Guidance', icon: BookOpen },
+    { path: `${baseFaculty}/interviews`, label: 'Mock Interviews', icon: Video },
+    { path: `${baseFaculty}/sessions`, label: 'Live Classes', icon: Calendar },
+    { path: `${baseFaculty}/performance`, label: 'Performance', icon: Award },
+    { path: `${baseFaculty}/history`, label: 'Activity History', icon: Clock },
   ];
 
   return (

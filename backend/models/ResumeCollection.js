@@ -4,16 +4,16 @@ class ResumeCollection {
   /**
    * Create a collection and associate selected students.
    */
-  static async create({ title, shareToken, createdBy, studentIds, companyName, salary, jd }) {
+  static async create({ title, shareToken, createdBy, studentIds, companyName, salary, jd, courseId }) {
     const connection = await pool.getConnection();
     try {
       await connection.beginTransaction();
 
       // 1. Create collection record
       const [colResult] = await connection.execute(
-        `INSERT INTO resume_collections (title, share_token, created_by, company_name, salary, jd)
-         VALUES (?, ?, ?, ?, ?, ?)`,
-        [title, shareToken, createdBy || null, companyName || null, salary || null, jd || null]
+        `INSERT INTO resume_collections (title, share_token, created_by, company_name, salary, jd, course_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [title, shareToken, createdBy || null, companyName || null, salary || null, jd || null, courseId || 1]
       );
       const collectionId = colResult.insertId;
 
@@ -43,28 +43,46 @@ class ResumeCollection {
   }
 
   /**
-   * Get all collections.
+   * Get all collections, optionally filtered by courseId.
    */
-  static async getAll() {
+  static async getAll(courseId = null) {
+    if (courseId) {
+      const [rows] = await pool.execute(
+        `SELECT rc.*, 
+           c.name as course_name, c.code as course_code, c.slug as course_slug,
+           (SELECT name FROM Users WHERE id = rc.created_by) as creator_name,
+           (SELECT COUNT(*) FROM resume_collection_students rcs WHERE rcs.collection_id = rc.id) as student_count
+         FROM resume_collections rc
+         LEFT JOIN Courses c ON rc.course_id = c.id
+         WHERE rc.course_id = ?
+         ORDER BY rc.created_at DESC`,
+        [courseId]
+      );
+      return rows;
+    }
+
     const [rows] = await pool.execute(
       `SELECT rc.*, 
+         c.name as course_name, c.code as course_code, c.slug as course_slug,
          (SELECT name FROM Users WHERE id = rc.created_by) as creator_name,
          (SELECT COUNT(*) FROM resume_collection_students rcs WHERE rcs.collection_id = rc.id) as student_count
        FROM resume_collections rc
+       LEFT JOIN Courses c ON rc.course_id = c.id
        ORDER BY rc.created_at DESC`
     );
     return rows;
   }
 
   /**
-   * Get a collection by ID.
+   * Get a collection by ID with course info.
    */
   static async getById(id) {
     // Get collection metadata
     const [cols] = await pool.execute(
-      `SELECT rc.*, u.name as creator_name 
+      `SELECT rc.*, u.name as creator_name, c.name as course_name, c.code as course_code, c.slug as course_slug
        FROM resume_collections rc
        LEFT JOIN Users u ON rc.created_by = u.id
+       LEFT JOIN Courses c ON rc.course_id = c.id
        WHERE rc.id = ?`,
       [id]
     );
@@ -98,15 +116,16 @@ class ResumeCollection {
   }
 
   /**
-   * Get public collection details by share token.
+   * Get public collection details by share token with course info.
    * This is used by the public unauthenticated page.
    * Note: We NEVER return notes or other sensitive fields.
    */
   static async getByToken(token) {
     const [cols] = await pool.execute(
-      `SELECT id, title, created_at, expires_at, is_active, company_name, salary, jd 
-       FROM resume_collections 
-       WHERE share_token = ? AND is_active = TRUE`,
+      `SELECT rc.*, c.name as course_name, c.code as course_code, c.slug as course_slug
+       FROM resume_collections rc 
+       LEFT JOIN Courses c ON rc.course_id = c.id
+       WHERE rc.share_token = ? AND rc.is_active = TRUE`,
       [token]
     );
 
