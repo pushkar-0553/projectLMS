@@ -189,7 +189,11 @@ exports.getStudents = async (req, res) => {
 
 exports.getHistory = async (req, res) => {
   try {
-    const history = await Activity.getAll();
+    const limit = parseInt(req.query.limit, 10) || 50;
+    const page = parseInt(req.query.page, 10) || 1;
+    const offset = req.query.offset !== undefined ? parseInt(req.query.offset, 10) : (page - 1) * limit;
+
+    const history = await Activity.getAll(limit, offset);
     res.json(history);
   } catch (error) {
     console.error('Error fetching history:', error);

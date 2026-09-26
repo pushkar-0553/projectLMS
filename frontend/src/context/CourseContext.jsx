@@ -40,6 +40,12 @@ export const CourseProvider = ({ children }) => {
       return;
     }
 
+    // If already loaded for this slug, avoid duplicate network roundtrip
+    if (currentCourse && currentCourse.slug === resolvedSlug) {
+      setLoading(false);
+      return;
+    }
+
     let isMounted = true;
     setLoading(true);
     setError(null);
@@ -74,7 +80,7 @@ export const CourseProvider = ({ children }) => {
     return () => {
       isMounted = false;
     };
-  }, [resolvedSlug, location.pathname]);
+  }, [resolvedSlug, pathParts[0]]);
 
   const switchCourse = (newSlug) => {
     if (!newSlug || newSlug === courseSlug) return;

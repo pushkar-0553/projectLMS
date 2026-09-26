@@ -41,6 +41,34 @@ const saveLocalResume = (file) => {
   };
 };
 
+// Helper: Batch attach notes and recruiter reviews to eliminate N+1 queries
+async function attachNotesAndReviews(students) {
+  if (!students || students.length === 0) return [];
+  const studentIds = students.map(s => s.id);
+  const [allNotes, allReviews] = await Promise.all([
+    Resume.getNotesForStudents(studentIds),
+    Resume.getRecruiterReviewsForStudents(studentIds)
+  ]);
+
+  const notesByStudent = {};
+  for (const n of allNotes) {
+    if (!notesByStudent[n.student_id]) notesByStudent[n.student_id] = [];
+    notesByStudent[n.student_id].push(n);
+  }
+
+  const reviewsByStudent = {};
+  for (const r of allReviews) {
+    if (!reviewsByStudent[r.student_id]) reviewsByStudent[r.student_id] = [];
+    reviewsByStudent[r.student_id].push(r);
+  }
+
+  return students.map(s => ({
+    ...s,
+    notes: notesByStudent[s.id] || [],
+    recruiter_reviews: reviewsByStudent[s.id] || []
+  }));
+}
+
 const resumeController = {
   /**
    * POST /api/resumes/upload
@@ -266,20 +294,7 @@ const resumeController = {
     try {
       const targetCourseId = await resolveCourseId(req);
       const students = await Resume.getAllStudentsWithResumeStatus(targetCourseId);
-      
-      // Fetch notes and recruiter reviews for all students
-      const studentsWithNotes = await Promise.all(
-        students.map(async (student) => {
-          const notes = await Resume.getNotes(student.id);
-          const reviews = await Resume.getRecruiterReviews(student.id);
-          return {
-            ...student,
-            notes,
-            recruiter_reviews: reviews
-          };
-        })
-      );
-
+      const studentsWithNotes = await attachNotesAndReviews(students);
       res.json(studentsWithNotes);
     } catch (error) {
       console.error('Get all resumes error:', error);
@@ -308,14 +323,7 @@ const resumeController = {
         );
       }
 
-      const results = await Promise.all(
-        filtered.map(async (student) => {
-          const notes = await Resume.getNotes(student.id);
-          const reviews = await Resume.getRecruiterReviews(student.id);
-          return { ...student, notes, recruiter_reviews: reviews };
-        })
-      );
-
+      const results = await attachNotesAndReviews(filtered);
       res.json(results);
     } catch (error) {
       console.error('Search resumes error:', error);
@@ -375,14 +383,7 @@ const resumeController = {
         });
       }
 
-      const results = await Promise.all(
-        students.map(async (student) => {
-          const notes = await Resume.getNotes(student.id);
-          const reviews = await Resume.getRecruiterReviews(student.id);
-          return { ...student, notes, recruiter_reviews: reviews };
-        })
-      );
-
+      const results = await attachNotesAndReviews(students);
       res.json(results);
     } catch (error) {
       console.error('Filter resumes error:', error);

@@ -283,6 +283,40 @@ class Resume {
     );
     return rows;
   }
+
+  /**
+   * Batch get private notes for multiple students (eliminates N+1).
+   */
+  static async getNotesForStudents(studentIds) {
+    if (!studentIds || studentIds.length === 0) return [];
+    const placeholders = studentIds.map(() => '?').join(',');
+    const [rows] = await pool.execute(
+      `SELECT rn.*, u.name as author_name, u.role as author_role
+       FROM resume_notes rn
+       LEFT JOIN Users u ON rn.created_by = u.id
+       WHERE rn.student_id IN (${placeholders})
+       ORDER BY rn.created_at DESC`,
+      studentIds
+    );
+    return rows;
+  }
+
+  /**
+   * Batch get recruiter reviews for multiple students (eliminates N+1).
+   */
+  static async getRecruiterReviewsForStudents(studentIds) {
+    if (!studentIds || studentIds.length === 0) return [];
+    const placeholders = studentIds.map(() => '?').join(',');
+    const [rows] = await pool.execute(
+      `SELECT rcs.*, rc.title as collection_title, rc.company_name
+       FROM resume_collection_students rcs
+       JOIN resume_collections rc ON rcs.collection_id = rc.id
+       WHERE rcs.student_id IN (${placeholders}) AND rcs.review_status != 'pending'
+       ORDER BY rcs.reviewed_at DESC`,
+      studentIds
+    );
+    return rows;
+  }
 }
 
 module.exports = Resume;

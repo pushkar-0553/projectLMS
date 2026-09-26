@@ -21,11 +21,25 @@ const courseRoutes = require('./routes/courseRoutes');
 const superAdminRoutes = require('./routes/superAdminRoutes');
 
 const http = require('http');
+const compression = require('compression');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
 const { initSocket } = require('./socket');
 
 const app = express();
 const server = http.createServer(app);
 const PORT = process.env.PORT || 5000;
+
+// Security headers
+app.use(helmet({
+  crossOriginResourcePolicy: false,
+  crossOriginEmbedderPolicy: false
+}));
+
+// Response compression (gzip) for payloads > 1KB
+app.use(compression({
+  threshold: 1024
+}));
 
 // Initialize Socket.io
 initSocket(server);
@@ -56,6 +70,16 @@ app.use(express.json());
 
 // Serve static files from uploads directory
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
+// Rate limiter for authentication attempts (brute-force defense)
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: 'Too many authentication attempts, please try again after 15 minutes.' }
+});
+app.use('/api/auth/login', authLimiter);
 
 app.use('/api/auth', authRoutes);
 app.use('/api/projects', projectRoutes);

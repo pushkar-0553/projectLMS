@@ -294,15 +294,30 @@ const userController = {
       const targetCourseId = await Course.resolveCourseId(req);
       const faculties = await User.findByRole('faculty', targetCourseId);
       
-      // Fetch batches for each faculty
-      const facultiesWithBatches = await Promise.all(faculties.map(async (faculty) => {
-        const [batches] = await pool.execute(
-          `SELECT b.id, b.name FROM Batches b
-           JOIN FacultyBatchMap fbm ON b.id = fbm.batch_id
-           WHERE fbm.faculty_id = ?`,
-          [faculty.id]
-        );
-        return { ...faculty, batches };
+      if (!faculties || faculties.length === 0) {
+        return res.json([]);
+      }
+
+      // Fetch batches for all faculties in a single query
+      const facultyIds = faculties.map(f => f.id);
+      const placeholders = facultyIds.map(() => '?').join(',');
+      const [batchRows] = await pool.execute(
+        `SELECT fbm.faculty_id, b.id, b.name 
+         FROM Batches b
+         JOIN FacultyBatchMap fbm ON b.id = fbm.batch_id
+         WHERE fbm.faculty_id IN (${placeholders})`,
+        facultyIds
+      );
+
+      const batchesByFaculty = {};
+      for (const row of batchRows) {
+        if (!batchesByFaculty[row.faculty_id]) batchesByFaculty[row.faculty_id] = [];
+        batchesByFaculty[row.faculty_id].push({ id: row.id, name: row.name });
+      }
+
+      const facultiesWithBatches = faculties.map(faculty => ({
+        ...faculty,
+        batches: batchesByFaculty[faculty.id] || []
       }));
       
       res.json(facultiesWithBatches);

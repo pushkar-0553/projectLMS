@@ -1,64 +1,73 @@
-import React from 'react'
+import React, { Suspense, lazy } from 'react'
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { useAuth } from './context/AuthContext'
-import Login from './pages/Login'
-import Dashboard from './pages/Dashboard'
 import favicon1 from './assets/favicon1.png'
 import favicon from './assets/favicon.png'
-import AdminDashboard from './pages/AdminDashboard'
-import AdminAnalytics from './pages/admin/AdminAnalytics'
-import ProjectsManagement from './pages/admin/ProjectsManagement'
-import StudentManagement from './pages/admin/StudentManagement'
-import CoordinatorManagement from './pages/admin/CoordinatorManagement'
-import FacultyManagement from './pages/admin/FacultyManagement'
-import MyProgress from './pages/student/MyProgress'
-import ChangePassword from './pages/student/ChangePassword'
-import ProjectLearning from './pages/student/ProjectLearning'
-import GuidedLearningPage from './pages/student/GuidedLearningPage'
-import InterviewGuidance from './pages/student/InterviewGuidance'
-import CoordinatorDashboard from './pages/coordinator/CoordinatorDashboard'
-import BatchManagement from './pages/admin/BatchManagement'
-import UserManagement from './pages/admin/UserManagement'
-import SystemHistory from './pages/admin/SystemHistory'
-import SubBatchManagement from './pages/coordinator/SubBatchManagement'
-import TaskManager from './pages/coordinator/TaskManager'
-import SubmissionReview from './pages/coordinator/SubmissionReview'
-import ActivityHistory from './pages/coordinator/ActivityHistory'
-import AcademicOperations from './pages/coordinator/AcademicOperations'
-import AttendancePage from './pages/coordinator/AttendancePage'
-import MyAttendance from './pages/student/MyAttendance'
-import TaskList from './pages/student/TaskList'
-import TaskSubmission from './pages/student/TaskSubmission'
-import AcademicProgress from './pages/student/AcademicProgress'
-import StudentProfilePage from './pages/shared/StudentProfilePage'
 
-// Platform Components
-import LiveClassroom from './pages/platform/LiveClassroom'
-import MockInterview from './pages/platform/MockInterview'
-import StudentPerformance from './pages/platform/StudentPerformance'
-import FacultyDashboard from './pages/faculty/FacultyDashboard'
-import AcademicGuidance from './pages/faculty/AcademicGuidance'
-import StudentMonitoring from './pages/faculty/StudentMonitoring'
-import ProjectManager from './pages/platform/ProjectManager'
-import SessionManager from './pages/platform/SessionManager'
-import NotificationCenter from './pages/platform/NotificationCenter'
-import MessagingPage from './pages/MessagingPage'
-import FacultyProjects from './pages/faculty/FacultyProjects'
-import FacultySessions from './pages/faculty/FacultySessions'
-import FacultyPerformance from './pages/faculty/FacultyPerformance'
-import ResumeDashboard from './pages/resumes/ResumeDashboard'
-import ResumeSharePage from './pages/resumes/ResumeSharePage'
-
-import SuperAdminLayout from './components/layout/SuperAdminLayout'
-import SuperAdminOverview from './pages/superadmin/SuperAdminOverview'
-import SuperAdminCourses from './pages/superadmin/SuperAdminCourses'
-import SuperAdminUsers from './pages/superadmin/SuperAdminUsers'
-
+// Layouts (Loaded statically for seamless structural transitions)
 import Layout from './components/layout/Layout'
 import AdminLayout from './components/layout/AdminLayout'
 import StudentLayout from './components/layout/StudentLayout'
 import CoordinatorLayout from './components/layout/CoordinatorLayout'
 import FacultyLayout from './components/layout/FacultyLayout'
+import SuperAdminLayout from './components/layout/SuperAdminLayout'
+
+// Lazy-Loaded Route Components (Code Splitting)
+const Login = lazy(() => import('./pages/Login'))
+const Dashboard = lazy(() => import('./pages/Dashboard'))
+const AdminDashboard = lazy(() => import('./pages/AdminDashboard'))
+const AdminAnalytics = lazy(() => import('./pages/admin/AdminAnalytics'))
+const ProjectsManagement = lazy(() => import('./pages/admin/ProjectsManagement'))
+const StudentManagement = lazy(() => import('./pages/admin/StudentManagement'))
+const CoordinatorManagement = lazy(() => import('./pages/admin/CoordinatorManagement'))
+const FacultyManagement = lazy(() => import('./pages/admin/FacultyManagement'))
+const MyProgress = lazy(() => import('./pages/student/MyProgress'))
+const ChangePassword = lazy(() => import('./pages/student/ChangePassword'))
+const ProjectLearning = lazy(() => import('./pages/student/ProjectLearning'))
+const GuidedLearningPage = lazy(() => import('./pages/student/GuidedLearningPage'))
+const InterviewGuidance = lazy(() => import('./pages/student/InterviewGuidance'))
+const CoordinatorDashboard = lazy(() => import('./pages/coordinator/CoordinatorDashboard'))
+const BatchManagement = lazy(() => import('./pages/admin/BatchManagement'))
+const UserManagement = lazy(() => import('./pages/admin/UserManagement'))
+const SystemHistory = lazy(() => import('./pages/admin/SystemHistory'))
+const SubBatchManagement = lazy(() => import('./pages/coordinator/SubBatchManagement'))
+const TaskManager = lazy(() => import('./pages/coordinator/TaskManager'))
+const SubmissionReview = lazy(() => import('./pages/coordinator/SubmissionReview'))
+const ActivityHistory = lazy(() => import('./pages/coordinator/ActivityHistory'))
+const AcademicOperations = lazy(() => import('./pages/coordinator/AcademicOperations'))
+const AttendancePage = lazy(() => import('./pages/coordinator/AttendancePage'))
+const MyAttendance = lazy(() => import('./pages/student/MyAttendance'))
+const TaskList = lazy(() => import('./pages/student/TaskList'))
+const TaskSubmission = lazy(() => import('./pages/student/TaskSubmission'))
+const AcademicProgress = lazy(() => import('./pages/student/AcademicProgress'))
+const StudentProfilePage = lazy(() => import('./pages/shared/StudentProfilePage'))
+
+// Platform Components
+const LiveClassroom = lazy(() => import('./pages/platform/LiveClassroom'))
+const MockInterview = lazy(() => import('./pages/platform/MockInterview'))
+const StudentPerformance = lazy(() => import('./pages/platform/StudentPerformance'))
+const FacultyDashboard = lazy(() => import('./pages/faculty/FacultyDashboard'))
+const AcademicGuidance = lazy(() => import('./pages/faculty/AcademicGuidance'))
+const StudentMonitoring = lazy(() => import('./pages/faculty/StudentMonitoring'))
+const ProjectManager = lazy(() => import('./pages/platform/ProjectManager'))
+const SessionManager = lazy(() => import('./pages/platform/SessionManager'))
+const NotificationCenter = lazy(() => import('./pages/platform/NotificationCenter'))
+const MessagingPage = lazy(() => import('./pages/MessagingPage'))
+const FacultyProjects = lazy(() => import('./pages/faculty/FacultyProjects'))
+const FacultySessions = lazy(() => import('./pages/faculty/FacultySessions'))
+const FacultyPerformance = lazy(() => import('./pages/faculty/FacultyPerformance'))
+const ResumeDashboard = lazy(() => import('./pages/resumes/ResumeDashboard'))
+const ResumeSharePage = lazy(() => import('./pages/resumes/ResumeSharePage'))
+
+const SuperAdminOverview = lazy(() => import('./pages/superadmin/SuperAdminOverview'))
+const SuperAdminCourses = lazy(() => import('./pages/superadmin/SuperAdminCourses'))
+const SuperAdminUsers = lazy(() => import('./pages/superadmin/SuperAdminUsers'))
+
+const PageLoader = () => (
+  <div className="loading" style={{ minHeight: '60vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+    <div className="spinner"></div>
+  </div>
+);
 
 // Role Helper Functions
 const isAdminOrSuper = (user) => user?.role === 'admin' || user?.role === 'super_admin';
@@ -145,7 +154,8 @@ function App() {
 
   return (
     <div className="App">
-      <Routes>
+      <Suspense fallback={<PageLoader />}>
+        <Routes>
         {/* Public & Recruiter Routes */}
         <Route path="/resumes" element={<ResumeDashboard />} />
         <Route path="/:courseSlug/resumes" element={<ResumeDashboard />} />
@@ -1315,7 +1325,8 @@ function App() {
           path="*" 
           element={<Navigate to={getRoleHomeRedirect(user)} replace />} 
         />
-      </Routes>
+        </Routes>
+      </Suspense>
     </div>
   )
 }
