@@ -62,6 +62,7 @@ const ResumeSharePage = lazy(() => import('./pages/resumes/ResumeSharePage'))
 const SuperAdminOverview = lazy(() => import('./pages/superadmin/SuperAdminOverview'))
 const SuperAdminCourses = lazy(() => import('./pages/superadmin/SuperAdminCourses'))
 const SuperAdminUsers = lazy(() => import('./pages/superadmin/SuperAdminUsers'))
+const SuperAdminTelemetry = lazy(() => import('./pages/superadmin/SuperAdminTelemetry'))
 
 const PageLoader = () => (
   <div className="loading" style={{ minHeight: '60vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -199,6 +200,18 @@ function App() {
             user?.role === 'super_admin' ? (
               <SuperAdminLayout>
                 <SuperAdminUsers />
+              </SuperAdminLayout>
+            ) : (
+              <Navigate to={getRoleHomeRedirect(user)} replace />
+            )
+          } 
+        />
+        <Route 
+          path="/super-admin/telemetry" 
+          element={
+            user?.role === 'super_admin' ? (
+              <SuperAdminLayout>
+                <SuperAdminTelemetry />
               </SuperAdminLayout>
             ) : (
               <Navigate to={getRoleHomeRedirect(user)} replace />

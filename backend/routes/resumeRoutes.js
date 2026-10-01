@@ -69,6 +69,9 @@ router.get('/resumes/student/:id', resumeController.getLatestResume);
 // Get upload history for a student
 router.get('/resumes/history/:studentId', resumeController.getHistory);
 
+// Get batch resume summaries for rectangle cards
+router.get('/resumes/batch-summaries', resumeController.getBatchSummaries);
+
 // Get all students with resumes status
 router.get('/resumes', resumeController.getAllResumes);
 

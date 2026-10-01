@@ -61,6 +61,117 @@ const styles = {
     flexDirection: 'column',
     gap: '4px'
   },
+  batchSection: {
+    marginBottom: '20px'
+  },
+  batchSectionHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: '12px'
+  },
+  batchSectionTitle: {
+    fontSize: '15px',
+    fontWeight: '700',
+    color: '#1e293b',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px'
+  },
+  batchCountBadge: {
+    background: '#e0e7ff',
+    color: '#4338ca',
+    fontSize: '12px',
+    fontWeight: '700',
+    padding: '2px 8px',
+    borderRadius: '12px'
+  },
+  batchCardsGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))',
+    gap: '14px'
+  },
+  batchCard: {
+    background: '#ffffff',
+    border: '1.5px solid #e2e8f0',
+    borderRadius: '12px',
+    padding: '14px 16px',
+    cursor: 'pointer',
+    transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '10px',
+    textAlign: 'left',
+    position: 'relative',
+    boxShadow: '0 1px 3px rgba(0,0,0,0.04)'
+  },
+  batchCardActive: {
+    borderColor: '#3b82f6',
+    background: 'linear-gradient(180deg, #eff6ff 0%, #ffffff 100%)',
+    boxShadow: '0 4px 14px rgba(59, 130, 246, 0.15)',
+    transform: 'translateY(-2px)'
+  },
+  batchCardTop: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center'
+  },
+  batchCardName: {
+    fontSize: '14px',
+    fontWeight: '700',
+    color: '#0f172a',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px'
+  },
+  batchStudentCount: {
+    fontSize: '12px',
+    fontWeight: '600',
+    padding: '2px 8px',
+    borderRadius: '10px',
+    background: '#f1f5f9',
+    color: '#475569'
+  },
+  batchCardMetrics: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '10px'
+  },
+  batchMetricPillGreen: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '4px',
+    fontSize: '12px',
+    fontWeight: '600',
+    color: '#059669',
+    background: '#ecfdf5',
+    padding: '3px 8px',
+    borderRadius: '6px'
+  },
+  batchMetricPillRed: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '4px',
+    fontSize: '12px',
+    fontWeight: '600',
+    color: '#dc2626',
+    background: '#fef2f2',
+    padding: '3px 8px',
+    borderRadius: '6px'
+  },
+  batchProgressBarBg: {
+    width: '100%',
+    height: '5px',
+    background: '#e2e8f0',
+    borderRadius: '3px',
+    overflow: 'hidden'
+  },
+  batchProgressBarFill: {
+    height: '100%',
+    background: '#10b981',
+    borderRadius: '3px',
+    transition: 'width 0.4s ease'
+  },
   statVal: {
     fontSize: '24px',
     fontWeight: '800',

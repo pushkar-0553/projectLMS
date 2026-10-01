@@ -11,6 +11,8 @@ router.use(authenticateToken);
 // Admin-only creation routes
 router.post('/create-user', isAdmin, adminController.createUser);
 router.post('/create-batch', isAdmin, adminController.createBatch);
+router.delete('/batches/:batchId', isAdmin, adminController.deleteBatch);
+router.post('/batches/assign-students', isAdmin, adminController.bulkAssignStudents);
 router.put('/batches/:batchId/class-link', isAdminOrCoordinator, adminController.updateBatchClassLink);
 
 // Issue #9 fix: Add bulk create students route

@@ -10,7 +10,8 @@ import {
   ExternalLink, 
   Plus, 
   CheckCircle, 
-  AlertCircle 
+  AlertCircle,
+  Activity
 } from 'lucide-react';
 
 const SuperAdminOverview = () => {
@@ -82,25 +83,47 @@ const SuperAdminOverview = () => {
           </p>
         </div>
 
-        <Link
-          to="/super-admin/courses"
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            background: 'linear-gradient(135deg, #6366f1, #06b6d4)',
-            color: '#fff',
-            padding: '12px 20px',
-            borderRadius: '10px',
-            textDecoration: 'none',
-            fontSize: '13px',
-            fontWeight: 600,
-            boxShadow: '0 4px 12px rgba(99, 102, 241, 0.4)'
-          }}
-        >
-          <Plus size={16} />
-          <span>Add New Course</span>
-        </Link>
+        <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+          <Link
+            to="/super-admin/telemetry"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              background: 'rgba(255, 255, 255, 0.1)',
+              border: '1px solid rgba(255, 255, 255, 0.2)',
+              color: '#fff',
+              padding: '12px 18px',
+              borderRadius: '10px',
+              textDecoration: 'none',
+              fontSize: '13px',
+              fontWeight: 600,
+              transition: 'background 0.2s'
+            }}
+          >
+            <Activity size={16} style={{ color: '#38bdf8' }} />
+            <span>Telemetry Center</span>
+          </Link>
+          <Link
+            to="/super-admin/courses"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              background: 'linear-gradient(135deg, #6366f1, #06b6d4)',
+              color: '#fff',
+              padding: '12px 20px',
+              borderRadius: '10px',
+              textDecoration: 'none',
+              fontSize: '13px',
+              fontWeight: 600,
+              boxShadow: '0 4px 12px rgba(99, 102, 241, 0.4)'
+            }}
+          >
+            <Plus size={16} />
+            <span>Add New Course</span>
+          </Link>
+        </div>
       </div>
 
       {/* KPI Stats Grid */}

@@ -127,7 +127,22 @@ class Resume {
    * Get all students with their latest resume details, private notes, batch name, and course info.
    * Can be scoped by courseId.
    */
-  static async getAllStudentsWithResumeStatus(courseId = null) {
+  static async getAllStudentsWithResumeStatus(courseId = null, batchId = null) {
+    let batchFilterClause = '';
+    const extraParams = [];
+
+    if (batchId !== null && batchId !== undefined && batchId !== '') {
+      if (batchId === 'unassigned') {
+        batchFilterClause = ' AND (sbm.batch_id IS NULL OR sbm.batch_id = 0)';
+      } else {
+        const numBatch = parseInt(batchId, 10);
+        if (!isNaN(numBatch)) {
+          batchFilterClause = ' AND (sbm.batch_id = ? OR b.id = ?)';
+          extraParams.push(numBatch, numBatch);
+        }
+      }
+    }
+
     if (courseId) {
       const [rows] = await pool.execute(
         `SELECT 
@@ -143,6 +158,7 @@ class Resume {
           u.skills, 
           u.github, 
           u.linkedin,
+          b.id as batch_id,
           b.name as batch_name,
           sr.id as resume_id,
           sr.resume_title,
@@ -163,9 +179,9 @@ class Resume {
          LEFT JOIN StudentBatchMap sbm ON u.id = sbm.student_id
          LEFT JOIN Batches b ON sbm.batch_id = b.id
          LEFT JOIN student_resumes sr ON u.id = sr.student_id AND sr.is_latest = TRUE AND (sr.course_id = ? OR sr.course_id IS NULL)
-         WHERE u.role = 'student'
+         WHERE u.role = 'student'${batchFilterClause}
          ORDER BY u.name ASC`,
-        [courseId, courseId]
+        [courseId, courseId, ...extraParams]
       );
       return rows;
     }
@@ -184,6 +200,7 @@ class Resume {
         u.skills, 
         u.github, 
         u.linkedin,
+        b.id as batch_id,
         b.name as batch_name,
         sr.id as resume_id,
         sr.resume_title,
@@ -204,8 +221,9 @@ class Resume {
        LEFT JOIN StudentBatchMap sbm ON u.id = sbm.student_id
        LEFT JOIN Batches b ON sbm.batch_id = b.id
        LEFT JOIN student_resumes sr ON u.id = sr.student_id AND sr.is_latest = TRUE
-       WHERE u.role = 'student'
-       ORDER BY u.name ASC`
+       WHERE u.role = 'student'${batchFilterClause}
+       ORDER BY u.name ASC`,
+      extraParams
     );
     return rows;
   }

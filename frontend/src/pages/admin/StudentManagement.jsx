@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { userAPI } from '../../services/api'
+import { userAPI, adminAPI } from '../../services/api'
 import { useCourse } from '../../context/CourseContext'
 import Button from '../../components/common/Button'
 import { 
@@ -18,15 +18,18 @@ import {
   Loader2,
   MoreVertical,
   Filter,
-  Eye
+  Eye,
+  CheckSquare,
+  Square
 } from 'lucide-react'
 import * as XLSX from 'xlsx'
 
 const StudentManagement = () => {
   const navigate = useNavigate()
-  const { courseSlug } = useCourse()
+  const { courseSlug, currentCourse } = useCourse()
   const baseAdmin = courseSlug ? `/${courseSlug}/admin` : '/admin'
   const [students, setStudents] = useState([])
+  const [batches, setBatches] = useState([])
   const [loading, setLoading] = useState(true)
   const [showCreateForm, setShowCreateForm] = useState(false)
   const [showBulkUpload, setShowBulkUpload] = useState(false)
@@ -37,6 +40,10 @@ const StudentManagement = () => {
     mobile: '',
     batch: ''
   })
+  const [bulkUploadDefaultBatch, setBulkUploadDefaultBatch] = useState('')
+  const [selectedStudentIds, setSelectedStudentIds] = useState([])
+  const [targetBatchId, setTargetBatchId] = useState('')
+  const [assigningBatch, setAssigningBatch] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
   const [processing, setProcessing] = useState(false)
@@ -44,7 +51,17 @@ const StudentManagement = () => {
 
   useEffect(() => {
     fetchStudents()
-  }, [])
+    fetchBatches()
+  }, [courseSlug, currentCourse])
+
+  const fetchBatches = async () => {
+    try {
+      const response = await adminAPI.getBatches()
+      setBatches(response.data || [])
+    } catch (err) {
+      console.error('Failed to load batches:', err)
+    }
+  }
 
   const fetchStudents = async () => {
     try {
@@ -82,6 +99,7 @@ const StudentManagement = () => {
       setFormData({ name: '', email: '', mobile: '', batch: '' })
       setShowCreateForm(false)
       fetchStudents()
+      fetchBatches()
     } catch (error) {
       setError(error.response?.data?.message || 'Failed to create student')
     } finally {
@@ -117,12 +135,11 @@ const StudentManagement = () => {
         const data = XLSX.utils.sheet_to_json(ws)
 
         // Map excel columns to our fields
-        // Expecting columns: Name, Email, Mobile, Batch
         const mappedData = data.map(row => ({
           name: row.Name || row.name || row['Full Name'],
           email: row.Email || row.email || row['Email ID'],
           mobile: row.Mobile || row.mobile || row['Phone'] || '',
-          batch: row.Batch || row.batch || '',
+          batch: row.Batch || row.batch || bulkUploadDefaultBatch || '',
           password: 'student123'
         })).filter(s => s.name && s.email)
 
@@ -133,7 +150,9 @@ const StudentManagement = () => {
         const response = await userAPI.bulkCreateStudents(mappedData)
         setSuccess(response.data.message)
         setShowBulkUpload(false)
+        setBulkUploadDefaultBatch('')
         fetchStudents()
+        fetchBatches()
       } catch (err) {
         setError(err.message || 'Failed to process Excel file')
       } finally {
@@ -144,10 +163,49 @@ const StudentManagement = () => {
     reader.readAsBinaryString(file)
   }
 
+  const handleToggleSelectStudent = (id) => {
+    setSelectedStudentIds(prev => 
+      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+    )
+  }
+
+  const handleSelectAllStudents = (e) => {
+    if (e.target.checked) {
+      setSelectedStudentIds(filteredStudents.map(s => s.id))
+    } else {
+      setSelectedStudentIds([])
+    }
+  }
+
+  const handleBulkAssignBatch = async () => {
+    if (selectedStudentIds.length === 0) return
+    if (!targetBatchId) {
+      alert('Please select a target batch or choose Remove Batch')
+      return
+    }
+
+    setAssigningBatch(true)
+    setError('')
+    try {
+      const bId = targetBatchId === 'unassigned' ? null : parseInt(targetBatchId, 10)
+      const res = await adminAPI.bulkAssignBatch(selectedStudentIds, bId)
+      setSuccess(res.data.message || `Assigned ${selectedStudentIds.length} students to batch!`)
+      setSelectedStudentIds([])
+      setTargetBatchId('')
+      fetchStudents()
+      fetchBatches()
+    } catch (err) {
+      console.error('Bulk assign error:', err)
+      setError(err.response?.data?.message || 'Failed to assign students to batch')
+    } finally {
+      setAssigningBatch(false)
+    }
+  }
+
   const downloadTemplate = () => {
     const template = [
-      { 'Full Name': 'John Doe', 'Email ID': 'john@example.com', 'Mobile': '9876543210', 'Batch': '2024' },
-      { 'Full Name': 'Jane Smith', 'Email ID': 'jane@example.com', 'Mobile': '9876543211', 'Batch': '2024' }
+      { 'Full Name': 'John Doe', 'Email ID': 'john@example.com', 'Mobile': '9876543210', 'Batch': batches[0]?.name || 'Batch-01' },
+      { 'Full Name': 'Jane Smith', 'Email ID': 'jane@example.com', 'Mobile': '9876543211', 'Batch': batches[0]?.name || 'Batch-01' }
     ]
     const ws = XLSX.utils.json_to_sheet(template)
     const wb = XLSX.utils.book_new()
@@ -158,7 +216,8 @@ const StudentManagement = () => {
   const filteredStudents = students.filter(s => 
     s.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
     s.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (s.batch && s.batch.toLowerCase().includes(searchQuery.toLowerCase()))
+    (s.batch && s.batch.toLowerCase().includes(searchQuery.toLowerCase())) ||
+    (s.batch_name && s.batch_name.toLowerCase().includes(searchQuery.toLowerCase()))
   )
 
   if (loading) {
@@ -218,8 +277,33 @@ const StudentManagement = () => {
               <div className="upload-zone text-center p-12 border-dashed rounded-2xl mb-6">
                 <Upload className="icon-xl text-primary opacity-20 mx-auto mb-4" />
                 <p className="font-bold mb-1">Select an Excel (.xlsx) file</p>
-                <p className="text-xs text-muted mb-6">File should contain Name, Email, Mobile, and Batch columns.</p>
+                <p className="text-xs text-muted mb-4">File should contain Name, Email, Mobile, and Batch columns.</p>
                 
+                {/* Optional default batch selector for bulk upload */}
+                <div style={{ maxWidth: '380px', margin: '0 auto 20px', textAlign: 'left' }}>
+                  <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: '#475569', marginBottom: '4px', textTransform: 'uppercase' }}>
+                    Assign All to Batch (Optional)
+                  </label>
+                  <select 
+                    value={bulkUploadDefaultBatch} 
+                    onChange={(e) => setBulkUploadDefaultBatch(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '8px 12px',
+                      borderRadius: '8px',
+                      border: '1px solid #cbd5e1',
+                      fontSize: '13px',
+                      background: '#fff',
+                      outline: 'none'
+                    }}
+                  >
+                    <option value="">Use Batch from Excel / Leave Unassigned</option>
+                    {batches.map(b => (
+                      <option key={b.id} value={b.name}>{b.name}</option>
+                    ))}
+                  </select>
+                </div>
+
                 <input 
                   type="file" 
                   ref={fileInputRef}
@@ -274,7 +358,26 @@ const StudentManagement = () => {
                     </div>
                     <div className="form-group-modern">
                       <label>Batch</label>
-                      <input name="batch" value={formData.batch} onChange={handleInputChange} placeholder="B-01" />
+                      <select 
+                        name="batch" 
+                        value={formData.batch} 
+                        onChange={handleInputChange}
+                        style={{
+                          width: '100%',
+                          padding: '0.75rem 1rem',
+                          background: 'white',
+                          border: '1px solid #e2e8f0',
+                          borderRadius: '0.75rem',
+                          fontSize: '0.9375rem',
+                          outline: 'none',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        <option value="">No Batch (Unassigned)</option>
+                        {batches.map(b => (
+                          <option key={b.id} value={b.name}>{b.name}</option>
+                        ))}
+                      </select>
                     </div>
                   </div>
                 </div>
@@ -318,6 +421,15 @@ const StudentManagement = () => {
             <table className="modern-table">
               <thead>
                 <tr>
+                  <th style={{ width: '40px', padding: '1rem 0.5rem 1rem 1.5rem' }}>
+                    <input 
+                      type="checkbox" 
+                      checked={filteredStudents.length > 0 && selectedStudentIds.length === filteredStudents.length}
+                      onChange={handleSelectAllStudents}
+                      style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+                      title="Select all students"
+                    />
+                  </th>
                   <th>Student Info</th>
                   <th>Batch</th>
                   <th>Contact</th>
@@ -328,7 +440,7 @@ const StudentManagement = () => {
               <tbody>
                 {filteredStudents.length === 0 ? (
                   <tr>
-                    <td colSpan="5" className="text-center py-20 text-muted">
+                    <td colSpan="6" className="text-center py-20 text-muted">
                        <Users className="icon-xl opacity-10 mx-auto mb-4" />
                        <p>No students found matching your search.</p>
                     </td>
@@ -336,6 +448,14 @@ const StudentManagement = () => {
                 ) : (
                   filteredStudents.map((student) => (
                     <tr key={student.id} className="hover:bg-slate-50 transition-colors">
+                      <td style={{ width: '40px', padding: '1.25rem 0.5rem 1.25rem 1.5rem' }}>
+                        <input 
+                          type="checkbox" 
+                          checked={selectedStudentIds.includes(student.id)}
+                          onChange={() => handleToggleSelectStudent(student.id)}
+                          style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+                        />
+                      </td>
                       <td>
                         <div className="flex items-center gap-3">
                           <div className="avatar-initials bg-indigo-100 text-indigo-700 font-bold">
@@ -348,7 +468,16 @@ const StudentManagement = () => {
                         </div>
                       </td>
                       <td>
-                        <span className="badge badge-emerald-soft">{student.batch || 'General'}</span>
+                        <span className={`badge ${student.batch_name || student.batch ? 'badge-emerald-soft' : 'badge-slate-soft'}`} style={{
+                          background: student.batch_name || student.batch ? '#ecfdf5' : '#f1f5f9',
+                          color: student.batch_name || student.batch ? '#047857' : '#64748b',
+                          padding: '4px 10px',
+                          borderRadius: '6px',
+                          fontWeight: 600,
+                          fontSize: '12px'
+                        }}>
+                          {student.batch_name || student.batch || 'No Batch'}
+                        </span>
                       </td>
                       <td className="text-sm text-slate-600">
                         {student.mobile || '-'}
@@ -383,6 +512,93 @@ const StudentManagement = () => {
             </table>
           </div>
         </div>
+
+        {/* Floating Bulk Action Bar for assigning selected students to a batch */}
+        {selectedStudentIds.length > 0 && (
+          <div style={{
+            position: 'fixed',
+            bottom: '24px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            background: '#0f172a',
+            color: '#ffffff',
+            padding: '14px 24px',
+            borderRadius: '16px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '16px',
+            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.4), 0 8px 10px -6px rgba(0, 0, 0, 0.3)',
+            zIndex: 999,
+            flexWrap: 'wrap',
+            animation: 'slideUp 0.3s ease-out'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ background: '#4f46e5', color: '#fff', padding: '3px 10px', borderRadius: '999px', fontSize: '13px', fontWeight: 700 }}>
+                {selectedStudentIds.length}
+              </span>
+              <span style={{ fontSize: '13px', fontWeight: 600 }}>Students Selected</span>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <select 
+                value={targetBatchId} 
+                onChange={(e) => setTargetBatchId(e.target.value)}
+                style={{
+                  padding: '8px 14px',
+                  borderRadius: '10px',
+                  border: '1px solid #334155',
+                  background: '#1e293b',
+                  color: '#ffffff',
+                  fontSize: '13px',
+                  fontWeight: 600,
+                  outline: 'none',
+                  minWidth: '200px'
+                }}
+              >
+                <option value="">-- Choose Target Batch --</option>
+                {batches.map(b => (
+                  <option key={b.id} value={b.id}>Assign to: {b.name}</option>
+                ))}
+                <option value="unassigned">⚠️ Remove from Batch (Unassigned)</option>
+              </select>
+
+              <button
+                onClick={handleBulkAssignBatch}
+                disabled={assigningBatch || !targetBatchId}
+                style={{
+                  background: 'linear-gradient(135deg, #4f46e5, #06b6d4)',
+                  color: '#ffffff',
+                  border: 'none',
+                  padding: '8px 18px',
+                  borderRadius: '10px',
+                  fontWeight: 700,
+                  fontSize: '13px',
+                  cursor: !targetBatchId || assigningBatch ? 'not-allowed' : 'pointer',
+                  opacity: !targetBatchId || assigningBatch ? 0.6 : 1,
+                  boxShadow: '0 4px 12px rgba(79, 70, 229, 0.4)',
+                  transition: 'all 0.2s'
+                }}
+              >
+                {assigningBatch ? 'Assigning...' : 'Assign to Batch'}
+              </button>
+
+              <button
+                onClick={() => setSelectedStudentIds([])}
+                style={{
+                  background: 'transparent',
+                  border: '1px solid #475569',
+                  color: '#94a3b8',
+                  padding: '8px 14px',
+                  borderRadius: '10px',
+                  fontSize: '13px',
+                  cursor: 'pointer'
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
       </main>
 
       <style>{`

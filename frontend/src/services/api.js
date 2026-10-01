@@ -66,7 +66,9 @@ export const authAPI = {
 
 export const adminAPI = {
   createUser: (userData) => api.post('/admin/create-user', userData),
-  createBatch: (name, classLink = '') => api.post('/admin/create-batch', { name, classLink }),
+  createBatch: (name, classLink = '', courseId = null, studentIds = []) => api.post('/admin/create-batch', { name, classLink, courseId, studentIds }),
+  deleteBatch: (batchId) => api.delete(`/admin/batches/${batchId}`),
+  bulkAssignBatch: (studentIds, batchId) => api.post('/admin/batches/assign-students', { studentIds, batchId }),
   updateBatchClassLink: (batchId, classLink) => api.put(`/admin/batches/${batchId}/class-link`, { classLink }),
   getBatches: () => api.get('/admin/batches'),
   getCoordinators: () => api.get('/admin/coordinators'),
@@ -234,6 +236,7 @@ export const resumeAPI = {
   }),
   getLatestResume: (studentId) => api.get(`/resumes/student/${studentId}`),
   getHistory: (studentId) => api.get(`/resumes/history/${studentId}`),
+  getBatchSummaries: (params) => api.get('/resumes/batch-summaries', { params }),
   getAllResumes: (params) => api.get('/resumes', { params }),
   searchResumes: (query, params) => api.get('/resumes/search', { params: { query, ...params } }),
   filterResumes: (filters) => api.get('/resumes/filter', { params: filters }),
@@ -287,6 +290,7 @@ export const courseAPI = {
 
 export const superAdminAPI = {
   getOverview: () => api.get('/super-admin/overview'),
+  getTelemetry: () => api.get('/super-admin/telemetry'),
   getAllUsers: () => api.get('/super-admin/users'),
   getAuditLogs: () => api.get('/super-admin/audit-logs'),
   assignCourseAdmin: (data) => api.post('/super-admin/assign-course-admin', data),

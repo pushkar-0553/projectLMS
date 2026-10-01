@@ -88,6 +88,56 @@ const cloudinaryService = {
       console.error(`Failed to delete Cloudinary file ${publicId}:`, error);
       throw error;
     }
+  },
+
+  /**
+   * Fetch live Cloudinary account usage metrics (storage, bandwidth, credits, objects)
+   */
+  async getUsageStats() {
+    if (!this.isConfigured()) {
+      return {
+        configured: false,
+        message: 'Cloudinary credentials missing'
+      };
+    }
+    try {
+      const usage = await cloudinary.api.usage();
+      return {
+        configured: true,
+        plan: usage.plan || 'Free',
+        lastUpdated: usage.last_updated,
+        storage: {
+          usageBytes: usage.storage?.usage || 0,
+          usageFormatted: `${((usage.storage?.usage || 0) / (1024 * 1024)).toFixed(2)} MB`,
+          creditsUsage: usage.storage?.credits_usage || 0
+        },
+        bandwidth: {
+          usageBytes: usage.bandwidth?.usage || 0,
+          usageFormatted: `${((usage.bandwidth?.usage || 0) / (1024 * 1024)).toFixed(2)} MB`,
+          creditsUsage: usage.bandwidth?.credits_usage || 0
+        },
+        credits: {
+          usage: usage.credits?.usage || 0,
+          limit: usage.credits?.limit || 25,
+          usedPercent: usage.credits?.used_percent || 0
+        },
+        resources: usage.resources || usage.objects?.usage || 0,
+        transformations: usage.transformations?.usage || 0,
+        requests: usage.requests || 0,
+        rateLimit: {
+          allowed: usage.rate_limit_allowed || 500,
+          remaining: usage.rate_limit_remaining || 0,
+          resetAt: usage.rate_limit_reset_at
+        },
+        mediaLimits: usage.media_limits || {}
+      };
+    } catch (err) {
+      console.error('Error fetching Cloudinary usage:', err);
+      return {
+        configured: true,
+        error: err.message
+      };
+    }
   }
 };
 

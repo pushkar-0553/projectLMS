@@ -52,6 +52,10 @@ const ResumeDashboard = () => {
   const [collections, setCollections] = useState([]);
   const [editStudent, setEditStudent] = useState(null);
 
+  const [batchSummaries, setBatchSummaries] = useState([]);
+  const [selectedBatchId, setSelectedBatchId] = useState(null);
+  const [loadingStudents, setLoadingStudents] = useState(false);
+
   // Stats
   const [stats, setStats] = useState({
     total: 0,
@@ -97,7 +101,46 @@ const ResumeDashboard = () => {
       setError('');
       const targetId = cId !== undefined ? cId : activeCourseId;
       const params = targetId ? { courseId: targetId } : {};
-      const response = await resumeAPI.getAllResumes(params);
+
+      // 1. Fetch batch summaries for rectangular cards
+      let summaries = [];
+      try {
+        const batchRes = await resumeAPI.getBatchSummaries(params);
+        let list = [];
+        if (Array.isArray(batchRes.data)) {
+          list = batchRes.data;
+        } else if (batchRes.data && typeof batchRes.data === 'object') {
+          const bList = batchRes.data.batches || [];
+          const uObj = batchRes.data.unassigned;
+          list = [...bList];
+          if (uObj && Number(uObj.total_students) > 0) {
+            list.push(uObj);
+          }
+        }
+        summaries = list.map(b => ({
+          ...b,
+          has_resume: Number(b.has_resume ?? b.resumes_uploaded ?? 0),
+          missing_resume: Number(b.missing_resume ?? b.resumes_missing ?? 0),
+          total_students: Number(b.total_students || 0)
+        }));
+        setBatchSummaries(summaries);
+      } catch (bErr) {
+        console.error('Error fetching batch summaries:', bErr);
+      }
+
+      // Determine initial selected batch: default to first batch if available, else null
+      let initialBatchId = null;
+      if (summaries.length > 0) {
+        initialBatchId = summaries[0].id;
+      }
+      setSelectedBatchId(initialBatchId);
+
+      // 2. Fetch students for the chosen initial batch (or all if no batches exist)
+      const studentParams = { ...params };
+      if (initialBatchId !== null && initialBatchId !== 'all') {
+        studentParams.batchId = initialBatchId;
+      }
+      const response = await resumeAPI.getAllResumes(studentParams);
       setStudents(response.data);
 
       // Extract unique batches list
@@ -122,6 +165,32 @@ const ResumeDashboard = () => {
       setError('Failed to fetch students and resumes. Please reload.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleSelectBatch = async (batchId) => {
+    setSelectedBatchId(batchId);
+    setSelectedStudentIds([]); // clear selection when switching batch
+    setLoadingStudents(true);
+    try {
+      const params = activeCourseId ? { courseId: activeCourseId } : {};
+      if (batchId !== null && batchId !== 'all') {
+        params.batchId = batchId;
+      }
+      const response = await resumeAPI.getAllResumes(params);
+      setStudents(response.data);
+
+      const total = response.data.length;
+      const hasResume = response.data.filter(s => s.has_resume === 1).length;
+      setStats({
+        total,
+        hasResume,
+        missingResume: total - hasResume
+      });
+    } catch (err) {
+      console.error('Error switching batch:', err);
+    } finally {
+      setLoadingStudents(false);
     }
   };
 
@@ -407,9 +476,103 @@ const ResumeDashboard = () => {
 
       {error && <div style={styles.errorAlert}>{error}</div>}
 
+      {/* Course Batches Rectangular Cards */}
+      {batchSummaries.length > 0 && (
+        <div style={styles.batchSection}>
+          <div style={styles.batchSectionHeader}>
+            <div style={styles.batchSectionTitle}>
+              <span>📁 Course Batches</span>
+              <span style={styles.batchCountBadge}>{batchSummaries.length} Batches</span>
+            </div>
+            {selectedBatchId && (
+              <button
+                onClick={() => handleSelectBatch('all')}
+                style={{
+                  background: selectedBatchId === 'all' ? '#1e293b' : '#ffffff',
+                  color: selectedBatchId === 'all' ? '#ffffff' : '#475569',
+                  border: '1px solid #cbd5e1',
+                  borderRadius: '6px',
+                  padding: '5px 12px',
+                  fontSize: '12px',
+                  fontWeight: '600',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease'
+                }}
+              >
+                {selectedBatchId === 'all' ? '✓ Showing All Batches' : 'Show All Students'}
+              </button>
+            )}
+          </div>
+
+          <div style={styles.batchCardsGrid}>
+            {batchSummaries.map((b) => {
+              const isSelected = selectedBatchId === b.id;
+              const pct = b.total_students > 0 ? Math.round((b.has_resume / b.total_students) * 100) : 0;
+              return (
+                <div
+                  key={b.id}
+                  onClick={() => handleSelectBatch(b.id)}
+                  style={{
+                    ...styles.batchCard,
+                    ...(isSelected ? styles.batchCardActive : {})
+                  }}
+                  title={`Click to view students in ${b.name}`}
+                >
+                  <div style={styles.batchCardTop}>
+                    <span style={styles.batchCardName}>
+                      {isSelected ? '🔷 ' : '📁 '}
+                      {b.id === 'unassigned' ? 'Unassigned Students' : b.name}
+                    </span>
+                    <span style={styles.batchStudentCount}>
+                      {b.total_students} {b.total_students === 1 ? 'Student' : 'Students'}
+                    </span>
+                  </div>
+
+                  <div style={styles.batchCardMetrics}>
+                    <span style={styles.batchMetricPillGreen}>
+                      ✓ {b.has_resume} Attached
+                    </span>
+                    <span style={styles.batchMetricPillRed}>
+                      ✕ {b.missing_resume} Missing
+                    </span>
+                  </div>
+
+                  <div style={styles.batchProgressBarBg}>
+                    <div style={{ ...styles.batchProgressBarFill, width: `${pct}%` }} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       <div style={styles.dashboardGrid}>
         {/* Main interactive candidate list */}
         <div style={styles.mainTableArea}>
+          {/* Active batch banner if a specific batch is selected */}
+          {selectedBatchId && selectedBatchId !== 'all' && (
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              background: '#eff6ff',
+              border: '1px solid #bfdbfe',
+              borderRadius: '8px',
+              padding: '8px 14px',
+              fontSize: '13px',
+              color: '#1e40af',
+              fontWeight: '600'
+            }}>
+              <span>
+                Viewing Batch: <strong>{batchSummaries.find(b => b.id === selectedBatchId)?.name || 'Selected Batch'}</strong> ({filteredStudents.length} students)
+              </span>
+              <span style={{ fontSize: '12px', color: '#3b82f6', fontWeight: '500' }}>
+                Click any card above to switch batch
+              </span>
+            </div>
+          )}
+
           {/* Filter and Search components */}
           <ResumeFilters
             searchQuery={searchQuery}
@@ -420,10 +583,10 @@ const ResumeDashboard = () => {
           />
 
           {/* Students list table */}
-          {loading ? (
+          {loading || loadingStudents ? (
             <div style={styles.loaderContainer}>
               <div style={styles.spinner} />
-              <span style={styles.loaderText}>Loading Resume Dashboard...</span>
+              <span style={styles.loaderText}>Loading Candidates & Resumes...</span>
             </div>
           ) : (
             <ResumeTable

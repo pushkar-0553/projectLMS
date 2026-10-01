@@ -287,13 +287,57 @@ const resumeController = {
   },
 
   /**
+   * GET /api/resumes/batch-summaries
+   * Returns rectangle cards data with batch name, total students, resumes uploaded, and missing.
+   */
+  async getBatchSummaries(req, res) {
+    try {
+      const targetCourseId = await resolveCourseId(req);
+      const Batch = require('../models/batchModel');
+      const summaries = await Batch.getBatchResumeStats(targetCourseId);
+      
+      const batches = summaries.batches || [];
+      const unassigned = summaries.unassigned;
+
+      const cardList = batches.map(b => ({
+        id: b.id,
+        name: b.name,
+        course_id: b.course_id,
+        total_students: Number(b.total_students) || 0,
+        has_resume: Number(b.resumes_uploaded) || 0,
+        missing_resume: Number(b.resumes_missing) || 0,
+        resumes_uploaded: Number(b.resumes_uploaded) || 0,
+        resumes_missing: Number(b.resumes_missing) || 0,
+      }));
+
+      if (unassigned && Number(unassigned.total_students) > 0) {
+        cardList.push({
+          id: 'unassigned',
+          name: 'Unassigned / No Batch',
+          total_students: Number(unassigned.total_students) || 0,
+          has_resume: Number(unassigned.resumes_uploaded) || 0,
+          missing_resume: Number(unassigned.resumes_missing) || 0,
+          resumes_uploaded: Number(unassigned.resumes_uploaded) || 0,
+          resumes_missing: Number(unassigned.resumes_missing) || 0,
+        });
+      }
+
+      res.json(cardList);
+    } catch (error) {
+      console.error('Get batch resume summaries error:', error);
+      res.status(500).json({ message: 'Server error fetching batch summaries' });
+    }
+  },
+
+  /**
    * GET /api/resumes
-   * Get all students with their latest resume info, notes, and search/filter.
+   * Get all students with their latest resume info, notes, and search/filter. Supports ?batchId=...
    */
   async getAllResumes(req, res) {
     try {
       const targetCourseId = await resolveCourseId(req);
-      const students = await Resume.getAllStudentsWithResumeStatus(targetCourseId);
+      const batchId = req.query.batchId || req.query.batch_id;
+      const students = await Resume.getAllStudentsWithResumeStatus(targetCourseId, batchId);
       const studentsWithNotes = await attachNotesAndReviews(students);
       res.json(studentsWithNotes);
     } catch (error) {

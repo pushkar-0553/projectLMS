@@ -8,7 +8,9 @@ import {
   Activity, 
   LogOut, 
   ChevronRight,
-  Sparkles
+  Sparkles,
+  Server,
+  FileText
 } from 'lucide-react';
 
 const SuperAdminLayout = ({ children }) => {
@@ -25,6 +27,7 @@ const SuperAdminLayout = ({ children }) => {
     { label: 'Platform Overview', path: '/super-admin/overview', icon: Activity },
     { label: 'Courses Management', path: '/super-admin/courses', icon: Layers },
     { label: 'Global Users', path: '/super-admin/users', icon: Users },
+    { label: 'Cloud & DB Telemetry', path: '/super-admin/telemetry', icon: Server },
   ];
 
   return (
@@ -98,6 +101,27 @@ const SuperAdminLayout = ({ children }) => {
           <div style={{ marginTop: '28px', fontSize: '11px', fontWeight: 600, color: '#64748b', padding: '0 12px 10px', letterSpacing: '0.05em' }}>
             QUICK ACCESS
           </div>
+          <Link
+            to="/resumes"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: '10px 14px',
+              borderRadius: '8px',
+              textDecoration: 'none',
+              fontSize: '13px',
+              color: '#94a3b8',
+              background: 'transparent',
+              marginBottom: '4px'
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <FileText size={16} style={{ color: '#06b6d4' }} />
+              <span>Resume Placement Hub</span>
+            </div>
+            <ChevronRight size={14} style={{ color: '#475569' }} />
+          </Link>
           <Link
             to="/legacy/dashboard"
             style={{

@@ -7,6 +7,7 @@ const { protect, authorize } = require('../middleware/authMiddleware');
 router.use(protect, authorize('super_admin'));
 
 router.get('/overview', superAdminController.getPlatformOverview);
+router.get('/telemetry', superAdminController.getSystemTelemetry);
 router.get('/users', superAdminController.getAllUsers);
 router.get('/audit-logs', superAdminController.getAuditLogs);
 

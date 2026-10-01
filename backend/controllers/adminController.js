@@ -84,7 +84,7 @@ exports.createUser = async (req, res) => {
 
 exports.createBatch = async (req, res) => {
   try {
-    const { name, classLink, courseId } = req.body;
+    const { name, classLink, courseId, studentIds } = req.body;
     let targetCourseId = courseId || req.courseId;
     if (!targetCourseId && req.headers['x-course-slug']) {
       const Course = require('../models/courseModel');
@@ -94,7 +94,7 @@ exports.createBatch = async (req, res) => {
     if (!targetCourseId && req.user && req.user.course_id && req.user.role !== 'super_admin') {
       targetCourseId = req.user.course_id;
     }
-    const batchId = await Batch.create(name, classLink, targetCourseId || 1);
+    const batchId = await Batch.create(name, classLink, targetCourseId || 1, studentIds || []);
     
     // Log activity
     await logActivity(
@@ -103,13 +103,62 @@ exports.createBatch = async (req, res) => {
       'CREATE_BATCH',
       'batch',
       batchId,
-      `Created main batch: ${name}`
+      `Created main batch: ${name}${studentIds?.length ? ` with ${studentIds.length} students` : ''}`
     );
     
     res.status(201).json({ message: 'Batch created successfully', batchId });
   } catch (error) {
     console.error('Error creating batch:', error);
     res.status(500).json({ message: 'Server error' });
+  }
+};
+
+exports.deleteBatch = async (req, res) => {
+  try {
+    const { batchId } = req.params;
+    const deleted = await Batch.delete(batchId);
+    if (!deleted) {
+      return res.status(404).json({ message: 'Batch not found or already deleted' });
+    }
+
+    await logActivity(
+      req.user.id,
+      req.user.role || 'admin',
+      'DELETE_BATCH',
+      'batch',
+      Number(batchId),
+      `Deleted batch ID: ${batchId}`
+    );
+
+    res.json({ message: 'Batch deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting batch:', error);
+    res.status(500).json({ message: 'Server error deleting batch' });
+  }
+};
+
+exports.bulkAssignStudents = async (req, res) => {
+  try {
+    const { studentIds, batchId } = req.body;
+    if (!studentIds || !Array.isArray(studentIds) || studentIds.length === 0) {
+      return res.status(400).json({ message: 'studentIds array is required' });
+    }
+
+    const assignedCount = await Batch.bulkAssignStudents(studentIds, batchId || null);
+
+    await logActivity(
+      req.user.id,
+      req.user.role || 'admin',
+      'BULK_ASSIGN_BATCH',
+      'batch',
+      batchId ? Number(batchId) : null,
+      `Assigned ${assignedCount} students to batch ${batchId || 'Unassigned'}`
+    );
+
+    res.json({ message: `Successfully assigned ${assignedCount} students to batch`, count: assignedCount });
+  } catch (error) {
+    console.error('Error bulk assigning students to batch:', error);
+    res.status(500).json({ message: error.message || 'Server error assigning students to batch' });
   }
 };
 
