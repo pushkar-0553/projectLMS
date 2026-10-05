@@ -18,12 +18,13 @@ const api = axios.create({
 
 api.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem('token');
+    // Read from sessionStorage (isolated per tab) with fallback to localStorage
+    const token = sessionStorage.getItem('token') || localStorage.getItem('token');
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
 
-    // Determine active course slug from URL or localStorage
+    // Determine active course slug from URL or sessionStorage
     const pathParts = window.location.pathname.split('/').filter(Boolean);
     const reserved = [
       'login', 'super-admin', 'resumes', 'public', 'users', 'admin',
@@ -34,7 +35,7 @@ api.interceptors.request.use(
     if (pathParts.length > 0 && !reserved.includes(pathParts[0])) {
       config.headers['X-Course-Slug'] = pathParts[0];
     } else {
-      const activeSlug = localStorage.getItem('activeCourseSlug');
+      const activeSlug = sessionStorage.getItem('activeCourseSlug') || localStorage.getItem('activeCourseSlug');
       if (activeSlug) {
         config.headers['X-Course-Slug'] = activeSlug;
       }
@@ -50,13 +51,25 @@ api.interceptors.request.use(
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
-      localStorage.removeItem('token')
-      window.location.href = '/login'
+    const isTokenError = 
+      error.response?.status === 401 ||
+      (error.response?.status === 403 && 
+        (error.response?.data?.message?.toLowerCase().includes('token') || 
+         error.response?.data?.message?.toLowerCase().includes('expired')));
+
+    if (isTokenError) {
+      sessionStorage.removeItem('token');
+      sessionStorage.removeItem('activeCourseSlug');
+      localStorage.removeItem('token');
+      localStorage.removeItem('activeCourseSlug');
+      // Only redirect if not already on the login or public pages
+      if (!window.location.pathname.startsWith('/login') && !window.location.pathname.startsWith('/public')) {
+        window.location.href = '/login';
+      }
     }
-    return Promise.reject(error)
+    return Promise.reject(error);
   }
-)
+);
 
 export const authAPI = {
   login: (email, password) => api.post('/auth/login', { email, password }),
@@ -262,11 +275,11 @@ export const resumeAPI = {
 
   // Helpers for direct download URLs
   getSingleDownloadUrl: (studentId) => {
-    const token = localStorage.getItem('token');
+    const token = sessionStorage.getItem('token') || localStorage.getItem('token');
     return `${API_BASE_URL}/resumes/download/${studentId}${token ? `?token=${token}` : ''}`;
   },
   getBulkDownloadUrl: (studentIds) => {
-    const token = localStorage.getItem('token');
+    const token = sessionStorage.getItem('token') || localStorage.getItem('token');
     return `${API_BASE_URL}/resumes/download-bulk?student_ids=${studentIds.join(',')}${token ? `&token=${token}` : ''}`;
   },
   getPublicSingleDownloadUrl: (token, studentId) => `${API_BASE_URL}/public/resumes/${token}/download/${studentId}`,

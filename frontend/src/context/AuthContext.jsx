@@ -16,46 +16,62 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    const token = localStorage.getItem('token')
+    // Purge any legacy tokens from localStorage so old browser sessions do not leak
+    localStorage.removeItem('token');
+    localStorage.removeItem('activeCourseSlug');
+
+    const token = sessionStorage.getItem('token');
     if (token) {
-      // Try to get user data, but don't fail if API is down
       authAPI.getUser()
         .then(response => {
-          setUser(response.data.user)
+          setUser({ ...response.data.user, token });
         })
         .catch((error) => {
-          console.warn('Failed to get user data:', error)
-          // Don't remove token on API failure, just set user to null
-          setUser(null)
+          console.warn('Failed to get user data:', error);
+          const isTokenError = 
+            error.response?.status === 401 ||
+            (error.response?.status === 403 && 
+              (error.response?.data?.message?.toLowerCase().includes('token') || 
+               error.response?.data?.message?.toLowerCase().includes('expired')));
+          if (isTokenError) {
+            sessionStorage.removeItem('token');
+            sessionStorage.removeItem('activeCourseSlug');
+          }
+          setUser(null);
         })
         .finally(() => {
-          setLoading(false)
-        })
+          setLoading(false);
+        });
     } else {
-      setLoading(false)
+      setLoading(false);
     }
-  }, [])
+  }, []);
 
   const login = async (email, password) => {
     try {
-      const response = await authAPI.login(email, password)
-      const { token, user } = response.data
-      localStorage.setItem('token', token)
-      setUser(user)
-      return { success: true, user }
+      const response = await authAPI.login(email, password);
+      const { token, user } = response.data;
+      // Store in sessionStorage so each tab is independently isolated and clears on close
+      sessionStorage.setItem('token', token);
+      localStorage.removeItem('token'); // clean legacy storage
+      setUser({ ...user, token });
+      return { success: true, user };
     } catch (error) {
-      console.error('Login failed:', error)
+      console.error('Login failed:', error);
       return { 
         success: false, 
         error: error.response?.data?.message || 'Invalid email or password' 
-      }
+      };
     }
-  }
+  };
 
   const logout = () => {
-    localStorage.removeItem('token')
-    setUser(null)
-  }
+    sessionStorage.removeItem('token');
+    sessionStorage.removeItem('activeCourseSlug');
+    localStorage.removeItem('token');
+    localStorage.removeItem('activeCourseSlug');
+    setUser(null);
+  };
 
   const value = {
     user,

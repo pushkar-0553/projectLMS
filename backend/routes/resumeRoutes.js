@@ -3,19 +3,31 @@ const router = express.Router();
 const multer = require('multer');
 const resumeController = require('../controllers/resumeController');
 const resumeCollectionController = require('../controllers/resumeCollectionController');
-const { protect } = require('../middleware/authMiddleware');
+const { verifyToken } = require('../utils/token');
+const User = require('../models/userModel');
 
-// Optional authentication middleware to populate req.user if token is sent
-const optionalAuth = (req, res, next) => {
+// Optional authentication middleware to populate req.user if valid token is sent
+const optionalAuth = async (req, res, next) => {
   const authHeader = req.headers['authorization'];
   let token = authHeader && authHeader.split(' ')[1];
   if (!token && req.query.token) token = req.query.token;
   if (!token) return next();
 
-  protect(req, res, (err) => {
-    // Continue even if token fails, but req.user will be populated if valid
-    next();
-  });
+  try {
+    const decoded = verifyToken(token);
+    const dbUser = await User.findById(decoded.id);
+    if (dbUser) {
+      req.user = {
+        id: dbUser.id,
+        role: dbUser.role,
+        name: dbUser.name,
+        email: dbUser.email
+      };
+    }
+  } catch (err) {
+    // If token is invalid or expired, continue without req.user
+  }
+  next();
 };
 
 // Multer memory storage configuration for PDFs (max 10MB)

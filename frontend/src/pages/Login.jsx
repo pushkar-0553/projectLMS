@@ -34,7 +34,7 @@ const Login = () => {
         const u = result.user;
         const primarySlug = u?.primaryCourse?.course_slug || u?.courses?.[0]?.course_slug;
         if (primarySlug) {
-          localStorage.setItem('activeCourseSlug', primarySlug);
+          sessionStorage.setItem('activeCourseSlug', primarySlug);
         }
 
         if (u?.role === 'super_admin') {

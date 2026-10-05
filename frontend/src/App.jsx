@@ -79,7 +79,7 @@ const getRoleHomeRedirect = (user) => {
   if (!user) return '/login';
   if (user.role === 'super_admin') return '/super-admin/overview';
 
-  const primarySlug = user.primaryCourse?.course_slug || user.courses?.[0]?.course_slug || localStorage.getItem('activeCourseSlug');
+  const primarySlug = user.primaryCourse?.course_slug || user.courses?.[0]?.course_slug || sessionStorage.getItem('activeCourseSlug') || localStorage.getItem('activeCourseSlug');
   const prefix = primarySlug ? `/${primarySlug}` : '';
 
   if (user.role === 'admin') return `${prefix}/admin`;

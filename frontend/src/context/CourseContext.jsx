@@ -23,7 +23,7 @@ export const CourseProvider = ({ children }) => {
     resolvedSlug = pathParts[0];
   }
   if (!resolvedSlug) {
-    resolvedSlug = localStorage.getItem('activeCourseSlug') || 'legacy';
+    resolvedSlug = sessionStorage.getItem('activeCourseSlug') || localStorage.getItem('activeCourseSlug') || 'legacy';
   }
 
   const [currentCourse, setCurrentCourse] = useState(null);
@@ -51,8 +51,8 @@ export const CourseProvider = ({ children }) => {
     setError(null);
     setCourseSlug(resolvedSlug);
 
-    // Save active course slug in localStorage
-    localStorage.setItem('activeCourseSlug', resolvedSlug);
+    // Save active course slug in sessionStorage (isolated per tab)
+    sessionStorage.setItem('activeCourseSlug', resolvedSlug);
 
     courseAPI.getBySlug(resolvedSlug)
       .then((res) => {
@@ -84,7 +84,7 @@ export const CourseProvider = ({ children }) => {
 
   const switchCourse = (newSlug) => {
     if (!newSlug || newSlug === courseSlug) return;
-    localStorage.setItem('activeCourseSlug', newSlug);
+    sessionStorage.setItem('activeCourseSlug', newSlug);
     // Replace current path segment with new slug
     const currentSubPath = location.pathname.replace(`/${courseSlug}`, '');
     const targetPath = currentSubPath ? `/${newSlug}${currentSubPath}` : `/${newSlug}/dashboard`;
