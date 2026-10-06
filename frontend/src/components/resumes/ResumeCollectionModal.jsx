@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { resumeAPI } from '../../services/api';
 
-const ResumeCollectionModal = ({ selectedStudentIds = [], onClose, onSuccess, courseId, courseName }) => {
+const ResumeCollectionModal = ({ selectedStudentIds = [], allStudents = [], onClose, onSuccess, courseId, courseName }) => {
   const [title, setTitle] = useState('');
   const [companyName, setCompanyName] = useState('');
   const [salary, setSalary] = useState('');
@@ -10,6 +10,15 @@ const ResumeCollectionModal = ({ selectedStudentIds = [], onClose, onSuccess, co
   const [error, setError] = useState('');
   const [shareLink, setShareLink] = useState('');
   const [copied, setCopied] = useState(false);
+
+  // Calculate batch breakdown for selected candidates
+  const selectedStudents = (allStudents || []).filter(s => selectedStudentIds.includes(s.id));
+  const batchBreakdown = selectedStudents.reduce((acc, s) => {
+    const b = s.batch_name || s.batch || 'Unassigned';
+    acc[b] = (acc[b] || 0) + 1;
+    return acc;
+  }, {});
+  const batchEntries = Object.entries(batchBreakdown);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -82,6 +91,41 @@ const ResumeCollectionModal = ({ selectedStudentIds = [], onClose, onSuccess, co
             <p style={styles.infoText}>
               You have selected <strong>{selectedStudentIds.length}</strong> {selectedStudentIds.length === 1 ? 'student' : 'students'}. Provide a name for this collection to generate a shareable link.
             </p>
+
+            {batchEntries.length > 0 && (
+              <div style={{
+                background: '#f8fafc',
+                border: '1px solid #e2e8f0',
+                borderRadius: '8px',
+                padding: '10px 14px',
+                marginBottom: '16px',
+                fontSize: '13px'
+              }}>
+                <div style={{ fontWeight: '600', color: '#1e293b', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span>📦 Batches Represented ({batchEntries.length}):</span>
+                  {batchEntries.length > 1 && (
+                    <span style={{ fontSize: '11px', background: '#dbeafe', color: '#1d4ed8', padding: '1px 6px', borderRadius: '4px' }}>
+                      Multi-Batch Link
+                    </span>
+                  )}
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                  {batchEntries.map(([bName, count]) => (
+                    <span key={bName} style={{
+                      background: '#ffffff',
+                      color: '#334155',
+                      border: '1px solid #cbd5e1',
+                      padding: '3px 8px',
+                      borderRadius: '6px',
+                      fontSize: '12px',
+                      fontWeight: '500'
+                    }}>
+                      📁 {bName}: <strong>{count}</strong>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {error && <div style={styles.errorAlert}>{error}</div>}
 

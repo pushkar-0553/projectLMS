@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import ResumeStatusBadge from './ResumeStatusBadge';
 import { useAuth } from '../../context/AuthContext';
 
@@ -19,10 +19,17 @@ const ResumeTable = ({
   const itemsPerPage = 10;
 
   // Pagination logic
+  const totalPages = Math.max(1, Math.ceil(students.length / itemsPerPage));
   const indexOfLastItem = currentPage * itemsPerPage;
   const indexOfFirstItem = indexOfLastItem - itemsPerPage;
   const currentItems = students.slice(indexOfFirstItem, indexOfLastItem);
-  const totalPages = Math.ceil(students.length / itemsPerPage);
+
+  // Automatically reset to page 1 if current page is beyond total pages (e.g. after filtering/batch switch)
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(1);
+    }
+  }, [students.length, totalPages]);
 
   const handlePageChange = (pageNumber) => {
     if (pageNumber >= 1 && pageNumber <= totalPages) {
@@ -37,7 +44,56 @@ const ResumeTable = ({
   };
 
   return (
-    <div style={styles.card}>
+    <div style={{
+      ...styles.card,
+      paddingBottom: selectedStudentIds.length > 0 ? '110px' : '20px'
+    }}>
+      {/* Top Bar with count and quick pagination */}
+      <div style={styles.tableTopBar}>
+        <div style={styles.tableCountText}>
+          {students.length > 0 ? (
+            <>
+              Showing <strong>{indexOfFirstItem + 1}–{Math.min(indexOfLastItem, students.length)}</strong> of <strong>{students.length}</strong> candidates
+            </>
+          ) : (
+            <span>0 candidates found</span>
+          )}
+        </div>
+
+        {totalPages > 1 && (
+          <div style={styles.topPagination}>
+            <button
+              onClick={() => handlePageChange(currentPage - 1)}
+              disabled={currentPage === 1}
+              style={{
+                ...styles.pageBtnSmall,
+                opacity: currentPage === 1 ? 0.4 : 1,
+                cursor: currentPage === 1 ? 'not-allowed' : 'pointer'
+              }}
+              title="Previous page"
+            >
+              ◀ Prev
+            </button>
+
+            <span style={styles.pageIndicatorText}>
+              Page <strong>{currentPage}</strong> of <strong>{totalPages}</strong>
+            </span>
+
+            <button
+              onClick={() => handlePageChange(currentPage + 1)}
+              disabled={currentPage === totalPages}
+              style={{
+                ...styles.pageBtnSmall,
+                opacity: currentPage === totalPages ? 0.4 : 1,
+                cursor: currentPage === totalPages ? 'not-allowed' : 'pointer'
+              }}
+              title="Next page"
+            >
+              Next ▶
+            </button>
+          </div>
+        )}
+      </div>
       <div style={styles.tableWrapper}>
         <table style={styles.table}>
           <thead>
@@ -104,14 +160,27 @@ const ResumeTable = ({
                     <td style={styles.td}>{student.mobile || '—'}</td>
                     <td style={styles.td}>{student.email}</td>
                     <td style={styles.td}>
-                      <span style={styles.batchBadge}>
-                        {student.batch_name || student.batch || 'Unassigned'}
-                        {student.course_code && (
-                          <span style={{ marginLeft: '4px', fontSize: '10px', color: '#4338ca', fontWeight: 'bold' }}>
-                            [{student.course_code}]
+                      {(() => {
+                        const batchText = student.batch_name || student.batch;
+                        const isAssigned = batchText && batchText !== 'Unassigned' && batchText.trim() !== '';
+                        return (
+                          <span style={{
+                            ...styles.batchBadge,
+                            background: isAssigned ? '#eff6ff' : '#fef3c7',
+                            color: isAssigned ? '#1e40af' : '#92400e',
+                            border: `1px solid ${isAssigned ? '#bfdbfe' : '#fde68a'}`,
+                            fontWeight: '600'
+                          }}>
+                            {isAssigned ? '📁 ' : '⏳ '}
+                            {isAssigned ? batchText : 'Unassigned / Unsent'}
+                            {student.course_code && (
+                              <span style={{ marginLeft: '4px', fontSize: '10px', color: '#4338ca', fontWeight: 'bold' }}>
+                                [{student.course_code}]
+                              </span>
+                            )}
                           </span>
-                        )}
-                      </span>
+                        );
+                      })()}
                     </td>
                     <td style={styles.td}>
                       <span style={{
@@ -187,38 +256,53 @@ const ResumeTable = ({
       {/* Pagination controls */}
       {totalPages > 1 && (
         <div style={styles.pagination}>
-          <button
-            onClick={() => handlePageChange(currentPage - 1)}
-            disabled={currentPage === 1}
-            style={styles.pageBtn}
-          >
-            Previous
-          </button>
-          
-          <div style={styles.pageNumbers}>
-            {Array.from({ length: totalPages }, (_, i) => i + 1).map(pageNum => (
-              <button
-                key={pageNum}
-                onClick={() => handlePageChange(pageNum)}
-                style={{
-                  ...styles.pageNumBtn,
-                  background: currentPage === pageNum ? '#4f46e5' : 'transparent',
-                  color: currentPage === pageNum ? '#ffffff' : '#4f46e5',
-                  border: currentPage === pageNum ? '1px solid #4f46e5' : '1px solid #e2e8f0'
-                }}
-              >
-                {pageNum}
-              </button>
-            ))}
+          <div style={styles.pageInfoBottom}>
+            Showing <strong>{indexOfFirstItem + 1}–{Math.min(indexOfLastItem, students.length)}</strong> of <strong>{students.length}</strong> candidates (Page {currentPage} of {totalPages})
           </div>
 
-          <button
-            onClick={() => handlePageChange(currentPage + 1)}
-            disabled={currentPage === totalPages}
-            style={styles.pageBtn}
-          >
-            Next
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+            <button
+              onClick={() => handlePageChange(currentPage - 1)}
+              disabled={currentPage === 1}
+              style={{
+                ...styles.pageBtn,
+                opacity: currentPage === 1 ? 0.4 : 1,
+                cursor: currentPage === 1 ? 'not-allowed' : 'pointer'
+              }}
+            >
+              ← Previous
+            </button>
+            
+            <div style={styles.pageNumbers}>
+              {Array.from({ length: totalPages }, (_, i) => i + 1).map(pageNum => (
+                <button
+                  key={pageNum}
+                  onClick={() => handlePageChange(pageNum)}
+                  style={{
+                    ...styles.pageNumBtn,
+                    background: currentPage === pageNum ? '#4f46e5' : '#ffffff',
+                    color: currentPage === pageNum ? '#ffffff' : '#334155',
+                    border: currentPage === pageNum ? '1px solid #4f46e5' : '1px solid #cbd5e1',
+                    fontWeight: currentPage === pageNum ? '700' : '600'
+                  }}
+                >
+                  {pageNum}
+                </button>
+              ))}
+            </div>
+
+            <button
+              onClick={() => handlePageChange(currentPage + 1)}
+              disabled={currentPage === totalPages}
+              style={{
+                ...styles.pageBtn,
+                opacity: currentPage === totalPages ? 0.4 : 1,
+                cursor: currentPage === totalPages ? 'not-allowed' : 'pointer'
+              }}
+            >
+              Next →
+            </button>
+          </div>
         </div>
       )}
     </div>
@@ -430,13 +514,54 @@ const styles = {
     fontSize: '14px',
     color: '#64748b'
   },
+  tableTopBar: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: '14px',
+    paddingBottom: '12px',
+    borderBottom: '1px solid #f1f5f9',
+    flexWrap: 'wrap',
+    gap: '10px'
+  },
+  tableCountText: {
+    fontSize: '13px',
+    color: '#64748b'
+  },
+  topPagination: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px'
+  },
+  pageBtnSmall: {
+    padding: '4px 10px',
+    fontSize: '12px',
+    fontWeight: '600',
+    color: '#475569',
+    background: '#f8fafc',
+    border: '1px solid #cbd5e1',
+    borderRadius: '6px',
+    cursor: 'pointer',
+    transition: 'all 0.15s ease'
+  },
+  pageIndicatorText: {
+    fontSize: '12px',
+    color: '#475569',
+    padding: '0 4px'
+  },
+  pageInfoBottom: {
+    fontSize: '13px',
+    color: '#64748b'
+  },
   pagination: {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginTop: '20px',
     paddingTop: '20px',
-    borderTop: '1px solid #f1f5f9'
+    borderTop: '1px solid #f1f5f9',
+    flexWrap: 'wrap',
+    gap: '12px'
   },
   pageBtn: {
     padding: '8px 14px',

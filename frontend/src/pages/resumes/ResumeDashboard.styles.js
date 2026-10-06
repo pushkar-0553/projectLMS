@@ -68,7 +68,9 @@ const styles = {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: '12px'
+    marginBottom: '12px',
+    flexWrap: 'wrap',
+    gap: '12px'
   },
   batchSectionTitle: {
     fontSize: '15px',
@@ -76,7 +78,32 @@ const styles = {
     color: '#1e293b',
     display: 'flex',
     alignItems: 'center',
-    gap: '8px'
+    gap: '8px',
+    flexWrap: 'wrap'
+  },
+  batchCategoryTabs: {
+    display: 'flex',
+    alignItems: 'center',
+    background: '#f1f5f9',
+    padding: '3px',
+    borderRadius: '8px',
+    gap: '4px'
+  },
+  batchCategoryTab: {
+    background: 'transparent',
+    border: 'none',
+    padding: '4px 10px',
+    borderRadius: '6px',
+    fontSize: '12px',
+    fontWeight: '600',
+    color: '#64748b',
+    cursor: 'pointer',
+    transition: 'all 0.15s ease'
+  },
+  batchCategoryTabActive: {
+    background: '#ffffff',
+    color: '#0f172a',
+    boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
   },
   batchCountBadge: {
     background: '#e0e7ff',
@@ -132,10 +159,23 @@ const styles = {
     background: '#f1f5f9',
     color: '#475569'
   },
+  batchSelectedPill: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '4px',
+    fontSize: '11px',
+    fontWeight: '700',
+    color: '#1d4ed8',
+    background: '#dbeafe',
+    border: '1px solid #bfdbfe',
+    padding: '2px 8px',
+    borderRadius: '10px'
+  },
   batchCardMetrics: {
     display: 'flex',
     alignItems: 'center',
-    gap: '10px'
+    gap: '10px',
+    flexWrap: 'wrap'
   },
   batchMetricPillGreen: {
     display: 'inline-flex',
@@ -224,16 +264,18 @@ const styles = {
     background: '#0f172a',
     color: '#ffffff',
     borderRadius: '16px',
-    boxShadow: '0 20px 25px -5px rgba(0,0,0,0.2), 0 8px 10px -6px rgba(0,0,0,0.2)',
-    padding: '14px 28px',
-    width: '90%',
-    maxWidth: '600px',
+    boxShadow: '0 20px 25px -5px rgba(0,0,0,0.3), 0 8px 10px -6px rgba(0,0,0,0.3)',
+    padding: '14px 24px',
+    width: '92%',
+    maxWidth: '850px',
     zIndex: 999
   },
   drawerContent: {
     display: 'flex',
     justifyContent: 'space-between',
-    alignItems: 'center'
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: '16px'
   },
   drawerCount: {
     fontSize: '18px',
@@ -244,6 +286,26 @@ const styles = {
   drawerLabel: {
     fontSize: '14px',
     fontWeight: '600'
+  },
+  drawerBatchBreakdown: {
+    fontSize: '12px',
+    color: '#94a3b8',
+    marginTop: '2px',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    flexWrap: 'wrap'
+  },
+  drawerBtnClear: {
+    padding: '8px 12px',
+    background: 'transparent',
+    border: '1px solid #475569',
+    color: '#94a3b8',
+    borderRadius: '8px',
+    fontSize: '12px',
+    fontWeight: '600',
+    cursor: 'pointer',
+    transition: 'all 0.2s'
   },
   drawerBtn: {
     padding: '10px 18px',

@@ -52,9 +52,12 @@ const ResumeDashboard = () => {
   const [collections, setCollections] = useState([]);
   const [editStudent, setEditStudent] = useState(null);
 
+  const [allStudents, setAllStudents] = useState([]);
   const [batchSummaries, setBatchSummaries] = useState([]);
-  const [selectedBatchId, setSelectedBatchId] = useState(null);
+  const [selectedBatchId, setSelectedBatchId] = useState('all');
+  const [batchCategoryFilter, setBatchCategoryFilter] = useState('all');
   const [loadingStudents, setLoadingStudents] = useState(false);
+  const [isDrawerCollapsed, setIsDrawerCollapsed] = useState(false);
 
   // Stats
   const [stats, setStats] = useState({
@@ -82,7 +85,7 @@ const ResumeDashboard = () => {
 
   useEffect(() => {
     applyFiltersAndSearch();
-  }, [students, searchQuery, filters]);
+  }, [allStudents, selectedBatchId, searchQuery, filters, batchSummaries]);
 
   const loadCollections = async (cId) => {
     try {
@@ -128,30 +131,24 @@ const ResumeDashboard = () => {
         console.error('Error fetching batch summaries:', bErr);
       }
 
-      // Determine initial selected batch: default to first batch if available, else null
-      let initialBatchId = null;
-      if (summaries.length > 0) {
-        initialBatchId = summaries[0].id;
-      }
-      setSelectedBatchId(initialBatchId);
+      // 2. Fetch all candidates for this course (default view shows all students)
+      const response = await resumeAPI.getAllResumes(params);
+      const studentList = response.data || [];
+      setAllStudents(studentList);
+      setStudents(studentList);
 
-      // 2. Fetch students for the chosen initial batch (or all if no batches exist)
-      const studentParams = { ...params };
-      if (initialBatchId !== null && initialBatchId !== 'all') {
-        studentParams.batchId = initialBatchId;
-      }
-      const response = await resumeAPI.getAllResumes(studentParams);
-      setStudents(response.data);
+      // Default to 'all' so users see all students before picking specific batches
+      setSelectedBatchId('all');
 
       // Extract unique batches list
       const uniqueBatches = [
-        ...new Set(response.data.map(s => s.batch_name || s.batch).filter(Boolean))
+        ...new Set(studentList.map(s => s.batch_name || s.batch).filter(Boolean))
       ];
       setBatches(uniqueBatches);
 
       // Compute general statistics
-      const total = response.data.length;
-      const hasResume = response.data.filter(s => s.has_resume === 1).length;
+      const total = studentList.length;
+      const hasResume = studentList.filter(s => s.has_resume === 1).length;
       setStats({
         total,
         hasResume,
@@ -168,36 +165,32 @@ const ResumeDashboard = () => {
     }
   };
 
-  const handleSelectBatch = async (batchId) => {
+  const handleSelectBatch = (batchId) => {
     setSelectedBatchId(batchId);
-    setSelectedStudentIds([]); // clear selection when switching batch
-    setLoadingStudents(true);
-    try {
-      const params = activeCourseId ? { courseId: activeCourseId } : {};
-      if (batchId !== null && batchId !== 'all') {
-        params.batchId = batchId;
-      }
-      const response = await resumeAPI.getAllResumes(params);
-      setStudents(response.data);
-
-      const total = response.data.length;
-      const hasResume = response.data.filter(s => s.has_resume === 1).length;
-      setStats({
-        total,
-        hasResume,
-        missingResume: total - hasResume
-      });
-    } catch (err) {
-      console.error('Error switching batch:', err);
-    } finally {
-      setLoadingStudents(false);
-    }
+    // Crucial: DO NOT clear selectedStudentIds. Candidates selected from other
+    // batches remain selected so recruiters can bundle multi-batch candidates into share links!
   };
 
   const applyFiltersAndSearch = () => {
-    let result = [...students];
+    let result = [...allStudents];
 
-    // 1. Multi-Field Comprehensive Search Query
+    // 1. Filter by selected Batch card (or 'all' for all students)
+    if (selectedBatchId && selectedBatchId !== 'all') {
+      if (selectedBatchId === 'unassigned') {
+        result = result.filter(s =>
+          (!s.batch_id || s.batch_id === 0) &&
+          (!s.batch || s.batch === 'Unassigned' || s.batch.trim() === '')
+        );
+      } else {
+        const currentBatch = batchSummaries.find(b => b.id === selectedBatchId);
+        result = result.filter(s =>
+          s.batch_id === selectedBatchId ||
+          (currentBatch && (s.batch_name === currentBatch.name || s.batch === currentBatch.name))
+        );
+      }
+    }
+
+    // 2. Multi-Field Comprehensive Search Query
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       result = result.filter(
@@ -215,17 +208,17 @@ const ResumeDashboard = () => {
       );
     }
 
-    // 2. Domain Filter
+    // 3. Domain Filter
     if (filters.domain) {
       result = result.filter(s => s.domain === filters.domain);
     }
 
-    // 3. Batch Filter
+    // 4. Batch Filter (dropdown)
     if (filters.batch) {
       result = result.filter(s => s.batch_name === filters.batch || s.batch === filters.batch);
     }
 
-    // 4. Resume Status Filter
+    // 5. Resume Status Filter
     if (filters.status) {
       if (filters.status === 'has_resume') {
         result = result.filter(s => s.has_resume === 1);
@@ -234,7 +227,7 @@ const ResumeDashboard = () => {
       }
     }
 
-    // 5. Updated Date Filter
+    // 6. Updated Date Filter
     if (filters.date && filters.date !== 'all') {
       const now = new Date();
       const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -315,15 +308,16 @@ const ResumeDashboard = () => {
       // Update local state in-place
       const addedNoteObj = response.data.note;
       
-      const updatedStudents = students.map(s => {
+      const updateList = (prev) => prev.map(s => {
         if (s.id === notesStudent.id) {
           const updatedNotes = [addedNoteObj, ...(s.notes || [])];
           return { ...s, notes: updatedNotes };
         }
         return s;
       });
-      
-      setStudents(updatedStudents);
+
+      setAllStudents(updateList);
+      setStudents(updateList);
       
       // Update modal student details
       setNotesStudent(prev => ({
@@ -346,7 +340,7 @@ const ResumeDashboard = () => {
     try {
       await resumeAPI.deleteNote(noteId);
 
-      const updatedStudents = students.map(s => {
+      const updateList = (prev) => prev.map(s => {
         if (s.id === notesStudent.id) {
           const updatedNotes = (s.notes || []).filter(n => n.id !== noteId);
           return { ...s, notes: updatedNotes };
@@ -354,7 +348,8 @@ const ResumeDashboard = () => {
         return s;
       });
 
-      setStudents(updatedStudents);
+      setAllStudents(updateList);
+      setStudents(updateList);
 
       setNotesStudent(prev => ({
         ...prev,
@@ -367,6 +362,25 @@ const ResumeDashboard = () => {
   };
 
   const isAllowedRole = !user || ['superadmin', 'super_admin', 'admin', 'coordinator'].includes(user.role);
+
+  // Multi-batch selected candidates calculation
+  const selectedStudentsList = allStudents.filter(s => selectedStudentIds.includes(s.id));
+  const selectedBatchesMap = selectedStudentsList.reduce((acc, s) => {
+    const bName = s.batch_name || s.batch || 'Unassigned / Unsent';
+    acc[bName] = (acc[bName] || 0) + 1;
+    return acc;
+  }, {});
+  const selectedBatchesEntries = Object.entries(selectedBatchesMap);
+  const selectedBatchesCount = selectedBatchesEntries.length;
+  const selectedBatchesSummaryText = selectedBatchesEntries
+    .map(([bName, count]) => `${bName} (${count})`)
+    .join(', ');
+
+  const createdBatches = batchSummaries.filter(b => b.id !== 'unassigned');
+  const unassignedBatch = batchSummaries.find(b => b.id === 'unassigned');
+  const totalAttached = allStudents.filter(s => s.has_resume === 1).length;
+  const totalMissing = allStudents.filter(s => s.has_resume === 0).length;
+  const totalPct = allStudents.length > 0 ? Math.round((totalAttached / allStudents.length) * 100) : 0;
 
   return (
     <div style={styles.container}>
@@ -481,33 +495,97 @@ const ResumeDashboard = () => {
         <div style={styles.batchSection}>
           <div style={styles.batchSectionHeader}>
             <div style={styles.batchSectionTitle}>
-              <span>📁 Course Batches</span>
-              <span style={styles.batchCountBadge}>{batchSummaries.length} Batches</span>
+              <span>📁 Course Batches & Placement Hub</span>
+              <span style={styles.batchCountBadge}>{createdBatches.length} Batches</span>
+              {unassignedBatch && unassignedBatch.total_students > 0 && (
+                <span style={{ ...styles.batchCountBadge, background: '#fef3c7', color: '#92400e' }}>
+                  {unassignedBatch.total_students} Unassigned
+                </span>
+              )}
             </div>
-            {selectedBatchId && (
+
+            {/* View category toggles: All Cards, Created Batches, Unassigned / Unsent */}
+            <div style={styles.batchCategoryTabs}>
               <button
-                onClick={() => handleSelectBatch('all')}
+                onClick={() => setBatchCategoryFilter('all')}
                 style={{
-                  background: selectedBatchId === 'all' ? '#1e293b' : '#ffffff',
-                  color: selectedBatchId === 'all' ? '#ffffff' : '#475569',
-                  border: '1px solid #cbd5e1',
-                  borderRadius: '6px',
-                  padding: '5px 12px',
-                  fontSize: '12px',
-                  fontWeight: '600',
-                  cursor: 'pointer',
-                  transition: 'all 0.15s ease'
+                  ...styles.batchCategoryTab,
+                  ...(batchCategoryFilter === 'all' ? styles.batchCategoryTabActive : {})
                 }}
               >
-                {selectedBatchId === 'all' ? '✓ Showing All Batches' : 'Show All Students'}
+                All Cards ({createdBatches.length + (unassignedBatch && unassignedBatch.total_students > 0 ? 1 : 0) + 1})
               </button>
-            )}
+              <button
+                onClick={() => setBatchCategoryFilter('created')}
+                style={{
+                  ...styles.batchCategoryTab,
+                  ...(batchCategoryFilter === 'created' ? styles.batchCategoryTabActive : {})
+                }}
+              >
+                Created Batches ({createdBatches.length})
+              </button>
+              {unassignedBatch && unassignedBatch.total_students > 0 && (
+                <button
+                  onClick={() => setBatchCategoryFilter('unassigned')}
+                  style={{
+                    ...styles.batchCategoryTab,
+                    ...(batchCategoryFilter === 'unassigned' ? styles.batchCategoryTabActive : {})
+                  }}
+                >
+                  Unassigned / Unsent ({unassignedBatch.total_students})
+                </button>
+              )}
+            </div>
           </div>
 
           <div style={styles.batchCardsGrid}>
-            {batchSummaries.map((b) => {
+            {/* Card 0: All Candidates (Always available as primary card) */}
+            {(batchCategoryFilter === 'all' || batchCategoryFilter === 'created') && (
+              <div
+                onClick={() => handleSelectBatch('all')}
+                style={{
+                  ...styles.batchCard,
+                  ...(selectedBatchId === 'all' ? styles.batchCardActive : {}),
+                  borderLeft: selectedBatchId === 'all' ? '4px solid #3b82f6' : '4px solid #6366f1'
+                }}
+                title="Click to view all students across all batches"
+              >
+                <div style={styles.batchCardTop}>
+                  <span style={styles.batchCardName}>
+                    {selectedBatchId === 'all' ? '🔷 ' : '👥 '}
+                    All Candidates
+                  </span>
+                  <span style={styles.batchStudentCount}>
+                    {allStudents.length} {allStudents.length === 1 ? 'Student' : 'Students'}
+                  </span>
+                </div>
+
+                <div style={styles.batchCardMetrics}>
+                  <span style={styles.batchMetricPillGreen}>
+                    ✓ {totalAttached} Attached
+                  </span>
+                  <span style={styles.batchMetricPillRed}>
+                    ✕ {totalMissing} Missing
+                  </span>
+                  {selectedStudentIds.length > 0 && (
+                    <span style={styles.batchSelectedPill}>
+                      ✓ {selectedStudentIds.length} Selected
+                    </span>
+                  )}
+                </div>
+
+                <div style={styles.batchProgressBarBg}>
+                  <div style={{ ...styles.batchProgressBarFill, width: `${totalPct}%` }} />
+                </div>
+              </div>
+            )}
+
+            {/* Created Batches Cards */}
+            {(batchCategoryFilter === 'all' || batchCategoryFilter === 'created') && createdBatches.map((b) => {
               const isSelected = selectedBatchId === b.id;
               const pct = b.total_students > 0 ? Math.round((b.has_resume / b.total_students) * 100) : 0;
+              const numSelected = selectedStudentsList.filter(s => s.batch_id === b.id || s.batch_name === b.name || s.batch === b.name).length;
+
               return (
                 <div
                   key={b.id}
@@ -521,7 +599,7 @@ const ResumeDashboard = () => {
                   <div style={styles.batchCardTop}>
                     <span style={styles.batchCardName}>
                       {isSelected ? '🔷 ' : '📁 '}
-                      {b.id === 'unassigned' ? 'Unassigned Students' : b.name}
+                      {b.name}
                     </span>
                     <span style={styles.batchStudentCount}>
                       {b.total_students} {b.total_students === 1 ? 'Student' : 'Students'}
@@ -535,6 +613,11 @@ const ResumeDashboard = () => {
                     <span style={styles.batchMetricPillRed}>
                       ✕ {b.missing_resume} Missing
                     </span>
+                    {numSelected > 0 && (
+                      <span style={styles.batchSelectedPill}>
+                        ✓ {numSelected} Selected
+                      </span>
+                    )}
                   </div>
 
                   <div style={styles.batchProgressBarBg}>
@@ -543,15 +626,67 @@ const ResumeDashboard = () => {
                 </div>
               );
             })}
+
+            {/* Unassigned / Unsent Batch Card */}
+            {(batchCategoryFilter === 'all' || batchCategoryFilter === 'unassigned') && unassignedBatch && unassignedBatch.total_students > 0 && (() => {
+              const isSelected = selectedBatchId === 'unassigned';
+              const pct = unassignedBatch.total_students > 0 ? Math.round((unassignedBatch.has_resume / unassignedBatch.total_students) * 100) : 0;
+              const numSelected = selectedStudentsList.filter(s => (!s.batch_id || s.batch_id === 0) && (!s.batch || s.batch === 'Unassigned' || s.batch.trim() === '')).length;
+
+              return (
+                <div
+                  key="unassigned"
+                  onClick={() => handleSelectBatch('unassigned')}
+                  style={{
+                    ...styles.batchCard,
+                    ...(isSelected ? styles.batchCardActive : {}),
+                    borderColor: isSelected ? '#3b82f6' : '#fed7aa',
+                    background: isSelected ? 'linear-gradient(180deg, #eff6ff 0%, #ffffff 100%)' : '#fffdfa'
+                  }}
+                  title="Click to view unassigned / unsent students"
+                >
+                  <div style={styles.batchCardTop}>
+                    <span style={{ ...styles.batchCardName, color: '#9a3412' }}>
+                      {isSelected ? '🔷 ' : '⏳ '}
+                      Unassigned / Unsent
+                    </span>
+                    <span style={{ ...styles.batchStudentCount, background: '#ffedd5', color: '#9a3412' }}>
+                      {unassignedBatch.total_students} {unassignedBatch.total_students === 1 ? 'Student' : 'Students'}
+                    </span>
+                  </div>
+
+                  <div style={styles.batchCardMetrics}>
+                    <span style={styles.batchMetricPillGreen}>
+                      ✓ {unassignedBatch.has_resume} Attached
+                    </span>
+                    <span style={styles.batchMetricPillRed}>
+                      ✕ {unassignedBatch.missing_resume} Missing
+                    </span>
+                    {numSelected > 0 && (
+                      <span style={styles.batchSelectedPill}>
+                        ✓ {numSelected} Selected
+                      </span>
+                    )}
+                  </div>
+
+                  <div style={styles.batchProgressBarBg}>
+                    <div style={{ ...styles.batchProgressBarFill, width: `${pct}%` }} />
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         </div>
       )}
 
-      <div style={styles.dashboardGrid}>
+      <div style={{
+        ...styles.dashboardGrid,
+        paddingBottom: selectedStudentIds.length > 0 ? '120px' : '0px'
+      }}>
         {/* Main interactive candidate list */}
         <div style={styles.mainTableArea}>
-          {/* Active batch banner if a specific batch is selected */}
-          {selectedBatchId && selectedBatchId !== 'all' && (
+          {/* Active batch view banner */}
+          {selectedBatchId && selectedBatchId !== 'all' ? (
             <div style={{
               display: 'flex',
               alignItems: 'center',
@@ -559,16 +694,89 @@ const ResumeDashboard = () => {
               background: '#eff6ff',
               border: '1px solid #bfdbfe',
               borderRadius: '8px',
-              padding: '8px 14px',
+              padding: '10px 16px',
               fontSize: '13px',
               color: '#1e40af',
-              fontWeight: '600'
+              fontWeight: '500',
+              marginBottom: '14px',
+              flexWrap: 'wrap',
+              gap: '8px'
             }}>
-              <span>
-                Viewing Batch: <strong>{batchSummaries.find(b => b.id === selectedBatchId)?.name || 'Selected Batch'}</strong> ({filteredStudents.length} students)
-              </span>
-              <span style={{ fontSize: '12px', color: '#3b82f6', fontWeight: '500' }}>
-                Click any card above to switch batch
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                <span>
+                  Viewing Batch: <strong>{batchSummaries.find(b => b.id === selectedBatchId)?.name || (selectedBatchId === 'unassigned' ? 'Unassigned / Unsent' : 'Selected Batch')}</strong> ({filteredStudents.length} candidates)
+                </span>
+                {(() => {
+                  const currentBatchSelected = selectedStudentsList.filter(s =>
+                    selectedBatchId === 'unassigned'
+                      ? ((!s.batch_id || s.batch_id === 0) && (!s.batch || s.batch === 'Unassigned'))
+                      : (s.batch_id === selectedBatchId || s.batch_name === batchSummaries.find(b => b.id === selectedBatchId)?.name)
+                  ).length;
+                  const otherBatchesSelected = selectedStudentIds.length - currentBatchSelected;
+                  if (otherBatchesSelected > 0) {
+                    return (
+                      <span style={{
+                        background: '#dbeafe',
+                        color: '#1d4ed8',
+                        border: '1px solid #93c5fd',
+                        padding: '2px 8px',
+                        borderRadius: '12px',
+                        fontSize: '11px',
+                        fontWeight: '600'
+                      }}>
+                        ✓ +{otherBatchesSelected} candidates selected from other batches are retained!
+                      </span>
+                    );
+                  }
+                  return null;
+                })()}
+              </div>
+              <button
+                onClick={() => handleSelectBatch('all')}
+                style={{
+                  background: '#ffffff',
+                  color: '#1d4ed8',
+                  border: '1px solid #bfdbfe',
+                  borderRadius: '6px',
+                  padding: '4px 12px',
+                  fontSize: '12px',
+                  fontWeight: '600',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease'
+                }}
+              >
+                ← View All Students
+              </button>
+            </div>
+          ) : (
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              background: '#f8fafc',
+              border: '1px solid #e2e8f0',
+              borderRadius: '8px',
+              padding: '10px 16px',
+              fontSize: '13px',
+              color: '#334155',
+              fontWeight: '500',
+              marginBottom: '14px',
+              flexWrap: 'wrap',
+              gap: '8px'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span>🎓</span>
+                <span>
+                  Showing <strong>All Candidates</strong> across all batches ({filteredStudents.length} displayed).
+                  {selectedStudentIds.length > 0 && (
+                    <strong style={{ marginLeft: '6px', color: '#0284c7' }}>
+                      ({selectedStudentIds.length} selected across {selectedBatchesCount} {selectedBatchesCount === 1 ? 'batch' : 'batches'})
+                    </strong>
+                  )}
+                </span>
+              </div>
+              <span style={{ fontSize: '12px', color: '#64748b' }}>
+                Click any batch card above to narrow down. Multi-batch selections persist.
               </span>
             </div>
           )}
@@ -621,43 +829,127 @@ const ResumeDashboard = () => {
 
       {/* Selected Action drawer */}
       {selectedStudentIds.length > 0 && (
-        <div style={styles.drawer}>
-          <div style={styles.drawerContent}>
-            <div>
-              <span style={styles.drawerCount}>{selectedStudentIds.length}</span>
-              <span style={styles.drawerLabel}>Candidates Selected</span>
+        <div style={{
+          ...styles.drawer,
+          padding: isDrawerCollapsed ? '10px 20px' : '14px 24px',
+          maxWidth: isDrawerCollapsed ? '480px' : '850px'
+        }}>
+          {isDrawerCollapsed ? (
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', gap: '12px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ fontSize: '16px', fontWeight: '800', color: '#38bdf8' }}>{selectedStudentIds.length}</span>
+                <span style={{ fontSize: '13px', fontWeight: '600' }}>Candidates Selected</span>
+                {selectedBatchesCount > 1 && (
+                  <span style={{ fontSize: '11px', color: '#94a3b8' }}>({selectedBatchesCount} batches)</span>
+                )}
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <button
+                  onClick={() => setShowCollectionModal(true)}
+                  style={{ ...styles.drawerBtn, padding: '7px 14px', fontSize: '12px' }}
+                >
+                  💼 Share Link
+                </button>
+                <button
+                  onClick={() => setIsDrawerCollapsed(false)}
+                  style={{
+                    background: '#1e293b',
+                    border: '1px solid #475569',
+                    color: '#e2e8f0',
+                    borderRadius: '8px',
+                    padding: '7px 12px',
+                    fontSize: '12px',
+                    fontWeight: '600',
+                    cursor: 'pointer'
+                  }}
+                  title="Expand full selection panel"
+                >
+                  ⤢ Expand
+                </button>
+              </div>
             </div>
-            <div style={{ display: 'flex', gap: '12px' }}>
-              {isAllowedRole && (
+          ) : (
+            <div style={styles.drawerContent}>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                  <span style={styles.drawerCount}>{selectedStudentIds.length}</span>
+                  <span style={styles.drawerLabel}>
+                    {selectedStudentIds.length === 1 ? 'Candidate Selected' : 'Candidates Selected'}
+                  </span>
+                  {selectedBatchesCount > 1 && (
+                    <span style={{
+                      fontSize: '11px',
+                      background: '#1e293b',
+                      color: '#38bdf8',
+                      border: '1px solid #0284c7',
+                      padding: '2px 8px',
+                      borderRadius: '12px',
+                      fontWeight: '600'
+                    }}>
+                      Across {selectedBatchesCount} Batches
+                    </span>
+                  )}
+                </div>
+                {selectedBatchesSummaryText && (
+                  <div style={styles.drawerBatchBreakdown} title={selectedBatchesSummaryText}>
+                    <span>📁 In link:</span>
+                    <span style={{ color: '#e2e8f0' }}>{selectedBatchesSummaryText}</span>
+                  </div>
+                )}
+              </div>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                <button
+                  onClick={() => setIsDrawerCollapsed(true)}
+                  style={{
+                    background: 'transparent',
+                    border: '1px solid #475569',
+                    color: '#94a3b8',
+                    borderRadius: '8px',
+                    padding: '8px 10px',
+                    fontSize: '12px',
+                    fontWeight: '600',
+                    cursor: 'pointer'
+                  }}
+                  title="Minimize bar to see full table"
+                >
+                  — Minimize
+                </button>
+                <button
+                  onClick={() => setSelectedStudentIds([])}
+                  style={styles.drawerBtnClear}
+                  title="Deselect all candidates"
+                >
+                  ✕ Clear All
+                </button>
+                {isAllowedRole && (
+                  <button
+                    onClick={() => {
+                      setWhatsappStudents(selectedStudentsList);
+                      setShowWhatsAppModal(true);
+                    }}
+                    style={styles.drawerBtnWhatsApp}
+                  >
+                    💬 Send WhatsApp
+                  </button>
+                )}
                 <button
                   onClick={() => {
-                    const selected = students.filter(s => selectedStudentIds.includes(s.id));
-                    setWhatsappStudents(selected);
-                    setShowWhatsAppModal(true);
+                    const downloadUrl = resumeAPI.getBulkDownloadUrl(selectedStudentIds);
+                    window.location.href = downloadUrl;
                   }}
-                  style={styles.drawerBtnWhatsApp}
+                  style={styles.drawerBtnZip}
                 >
-                  💬 Send WhatsApp
+                  📦 Download ZIP
                 </button>
-              )}
-              <button
-                onClick={() => {
-                  const downloadUrl = resumeAPI.getBulkDownloadUrl(selectedStudentIds);
-                  window.location.href = downloadUrl;
-                  setSelectedStudentIds([]);
-                }}
-                style={styles.drawerBtnZip}
-              >
-                📦 Download ZIP
-              </button>
-              <button
-                onClick={() => setShowCollectionModal(true)}
-                style={styles.drawerBtn}
-              >
-                💼 Generate Share Link
-              </button>
+                <button
+                  onClick={() => setShowCollectionModal(true)}
+                  style={styles.drawerBtn}
+                >
+                  💼 Generate Share Link
+                </button>
+              </div>
             </div>
-          </div>
+          )}
         </div>
       )}
 
@@ -682,13 +974,16 @@ const ResumeDashboard = () => {
       {showCollectionModal && (
         <ResumeCollectionModal
           selectedStudentIds={selectedStudentIds}
+          allStudents={allStudents}
           courseId={activeCourseId}
           courseName={currentCourse?.name || courses.find(c => c.id === activeCourseId)?.name}
           onClose={() => {
             setShowCollectionModal(false);
+          }}
+          onSuccess={() => {
+            loadData(activeCourseId);
             setSelectedStudentIds([]); // Clear selection after generating
           }}
-          onSuccess={() => loadData(activeCourseId)}
         />
       )}
 
