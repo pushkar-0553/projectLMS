@@ -2,7 +2,7 @@ import React from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import { useCourse } from '../../context/CourseContext'
-import { BarChart3, BookOpen, GraduationCap, History, Layers, LogOut, UserCog, Users, UserCheck, MessageSquare, FileText, Shield } from 'lucide-react'
+import { BarChart3, BookOpen, GraduationCap, History, Layers, LogOut, UserCog, Users, UserCheck, MessageSquare, FileText, Shield, CheckSquare } from 'lucide-react'
 import NotificationBell from '../notifications/NotificationBell';
 import MessagingIcon from '../messaging/MessagingIcon';
 import CourseSwitcher from '../common/CourseSwitcher';
@@ -21,6 +21,7 @@ const AdminLayout = ({ children }) => {
     { path: `${baseAdmin}/coordinators`, icon: GraduationCap, label: 'Coordinators' },
     { path: `${baseAdmin}/faculties`, icon: UserCheck, label: 'Faculty' },
     { path: `${baseAdmin}/batches`, icon: Layers, label: 'Batches' },
+    { path: `${baseAdmin}/exams`, icon: CheckSquare, label: 'Written Exams' },
     { path: courseSlug ? `/${courseSlug}/resumes` : '/resumes', icon: FileText, label: 'Resume Hub' },
     { path: `${baseAdmin}/users`, icon: UserCog, label: 'Users' },
     { path: `${baseAdmin}/history`, icon: History, label: 'System History' },

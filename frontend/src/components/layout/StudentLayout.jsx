@@ -2,7 +2,7 @@ import React from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import { useCourse } from '../../context/CourseContext'
-import { BarChart3, BookOpen, Calendar, ClipboardList, GraduationCap, KeyRound, LogOut, TrendingUp, MessageSquare } from 'lucide-react'
+import { BarChart3, BookOpen, Calendar, ClipboardList, GraduationCap, KeyRound, LogOut, TrendingUp, MessageSquare, Award } from 'lucide-react'
 import NotificationBell from '../notifications/NotificationBell';
 import MessagingIcon from '../messaging/MessagingIcon';
 import CourseSwitcher from '../common/CourseSwitcher';
@@ -18,6 +18,7 @@ const StudentLayout = ({ children }) => {
     { path: `${baseStudent}/dashboard`, icon: BarChart3, label: 'Dashboard' },
     { path: `${baseStudent}/project-learning`, icon: BookOpen, label: 'Project Learning' },
     { path: `${baseStudent}/student/tasks`, icon: ClipboardList, label: 'Learning Tasks' },
+    { path: `${baseStudent}/student/exams`, icon: Award, label: 'My Exams' },
     { path: `${baseStudent}/my-progress`, icon: TrendingUp, label: 'Project Progress' },
     { path: `${baseStudent}/academic-progress`, icon: GraduationCap, label: 'Academic Progress' },
     { path: `${baseStudent}/student/attendance`, icon: Calendar, label: 'My Attendance' },

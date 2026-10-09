@@ -2,7 +2,7 @@ import React from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import { useCourse } from '../../context/CourseContext'
-import { BarChart3, Calendar, ClipboardList, GraduationCap, History, LayoutList, LogOut, Users, MessageSquare, FileText, BookOpen, Video } from 'lucide-react'
+import { BarChart3, Calendar, ClipboardList, GraduationCap, History, LayoutList, LogOut, Users, MessageSquare, FileText, BookOpen, Video, CheckSquare } from 'lucide-react'
 import NotificationBell from '../notifications/NotificationBell';
 import MessagingIcon from '../messaging/MessagingIcon';
 import CourseSwitcher from '../common/CourseSwitcher';
@@ -20,6 +20,7 @@ const CoordinatorLayout = ({ children }) => {
     { path: `${baseCoord}/tasks`, icon: ClipboardList, label: 'Manage Tasks' },
     { path: `${baseCoord}/academics`, icon: GraduationCap, label: 'Academics' },
     { path: `${baseCoord}/attendance`, icon: Calendar, label: 'Attendance' },
+    { path: `${baseCoord}/exams`, icon: CheckSquare, label: 'Written Exams' },
     { path: courseSlug ? `/${courseSlug}/resumes` : '/resumes', icon: FileText, label: 'Resume Hub' },
     ...(user?.role === 'faculty' ? [
       { path: `${baseCoord}/guidance`, icon: BookOpen, label: 'Guidance' },

@@ -19,6 +19,8 @@ const resumeRoutes = require('./routes/resumeRoutes');
 const publicResumeRoutes = require('./routes/publicResumeRoutes');
 const courseRoutes = require('./routes/courseRoutes');
 const superAdminRoutes = require('./routes/superAdminRoutes');
+const examRoutes = require('./routes/examRoutes');
+const { startEmailWorker } = require('./services/emailQueueWorker');
 
 const http = require('http');
 const compression = require('compression');
@@ -98,9 +100,18 @@ app.use('/api', resumeRoutes);
 app.use('/api', publicResumeRoutes);
 app.use('/api/courses', courseRoutes);
 app.use('/api/super-admin', superAdminRoutes);
+app.use('/api/exams', examRoutes);
 
 app.get('/', (req, res) => {
   res.json({ message: 'Project Learning Module API is running' });
+});
+
+// Production deployment health check endpoints
+app.get('/health', (req, res) => {
+  res.status(200).json({ status: 'healthy', uptime: process.uptime(), timestamp: new Date().toISOString() });
+});
+app.get('/api/health', (req, res) => {
+  res.status(200).json({ status: 'healthy', uptime: process.uptime(), timestamp: new Date().toISOString() });
 });
 
 app.use((err, req, res, next) => {
@@ -114,4 +125,10 @@ app.use((req, res) => {
 
 server.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
+  try {
+    startEmailWorker(5000);
+    console.log('[Exam System] Email queue background worker initiated');
+  } catch (err) {
+    console.error('[Exam System] Failed to start email queue worker:', err.message);
+  }
 });

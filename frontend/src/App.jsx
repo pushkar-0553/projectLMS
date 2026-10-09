@@ -64,6 +64,10 @@ const SuperAdminCourses = lazy(() => import('./pages/superadmin/SuperAdminCourse
 const SuperAdminUsers = lazy(() => import('./pages/superadmin/SuperAdminUsers'))
 const SuperAdminTelemetry = lazy(() => import('./pages/superadmin/SuperAdminTelemetry'))
 
+const ExamHub = lazy(() => import('./pages/exams/ExamHub'))
+const StudentExamPortal = lazy(() => import('./pages/exams/StudentExamPortal'))
+const StudentExamsPage = lazy(() => import('./pages/student/StudentExamsPage'))
+
 const PageLoader = () => (
   <div className="loading" style={{ minHeight: '60vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
     <div className="spinner"></div>
@@ -161,6 +165,10 @@ function App() {
         <Route path="/resumes" element={<ResumeDashboard />} />
         <Route path="/:courseSlug/resumes" element={<ResumeDashboard />} />
         <Route path="/resumes/share/:token" element={<ResumeSharePage />} />
+        
+        {/* Public Student Examination Portal */}
+        <Route path="/exam/:assignmentCode" element={<StudentExamPortal />} />
+        <Route path="/:courseSlug/exam/:assignmentCode" element={<StudentExamPortal />} />
         
         {/* Auth Route */}
         <Route 
@@ -327,6 +335,18 @@ function App() {
           }
         />
         <Route 
+          path="/admin/exams" 
+          element={
+            isAdminOrSuper(user) ? (
+              <AdminLayout>
+                <ExamHub />
+              </AdminLayout>
+            ) : (
+              <Navigate to={getRoleHomeRedirect(user)} replace />
+            )
+          }
+        />
+        <Route 
           path="/admin/messages" 
           element={
             isAdminOrSuper(user) ? (
@@ -468,6 +488,18 @@ function App() {
             isCoordinatorOrAbove(user) ? (
               <CoordinatorLayout>
                 <AttendancePage />
+              </CoordinatorLayout>
+            ) : (
+              <Navigate to={getRoleHomeRedirect(user)} replace />
+            )
+          }
+        />
+        <Route 
+          path="/coordinator/exams" 
+          element={
+            isCoordinatorOrAbove(user) ? (
+              <CoordinatorLayout>
+                <ExamHub />
               </CoordinatorLayout>
             ) : (
               <Navigate to={getRoleHomeRedirect(user)} replace />
@@ -720,6 +752,18 @@ function App() {
           }
         />
         <Route 
+          path="/student/exams" 
+          element={
+            user ? (
+              <StudentLayout>
+                <StudentExamsPage />
+              </StudentLayout>
+            ) : (
+              <Navigate to="/login" replace />
+            )
+          }
+        />
+        <Route 
           path="/notifications" 
           element={
             user ? (
@@ -898,6 +942,18 @@ function App() {
           } 
         />
         <Route 
+          path="/:courseSlug/admin/exams" 
+          element={
+            isAdminOrSuper(user) ? (
+              <AdminLayout>
+                <ExamHub />
+              </AdminLayout>
+            ) : (
+              <Navigate to={getRoleHomeRedirect(user)} replace />
+            )
+          } 
+        />
+        <Route 
           path="/:courseSlug/admin/messages" 
           element={
             isAdminOrSuper(user) ? (
@@ -1037,6 +1093,18 @@ function App() {
             isCoordinatorOrAbove(user) ? (
               <CoordinatorLayout>
                 <AttendancePage />
+              </CoordinatorLayout>
+            ) : (
+              <Navigate to={getRoleHomeRedirect(user)} replace />
+            )
+          } 
+        />
+        <Route 
+          path="/:courseSlug/coordinator/exams" 
+          element={
+            isCoordinatorOrAbove(user) ? (
+              <CoordinatorLayout>
+                <ExamHub />
               </CoordinatorLayout>
             ) : (
               <Navigate to={getRoleHomeRedirect(user)} replace />
@@ -1244,6 +1312,18 @@ function App() {
             user ? (
               <StudentLayout>
                 <MyAttendance />
+              </StudentLayout>
+            ) : (
+              <Navigate to="/login" replace />
+            )
+          } 
+        />
+        <Route 
+          path="/:courseSlug/student/exams" 
+          element={
+            user ? (
+              <StudentLayout>
+                <StudentExamsPage />
               </StudentLayout>
             ) : (
               <Navigate to="/login" replace />

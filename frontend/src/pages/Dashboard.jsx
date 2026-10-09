@@ -1,25 +1,66 @@
 import React, { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import { useCourse } from '../context/CourseContext'
 import { projectAPI, studentAPI } from '../services/api'
+import { examApi } from '../services/examApi'
 import ResumeLearning from '../components/learning/ResumeLearning'
 import Button from '../components/common/Button'
 import { 
   BookOpen, Clock, ChevronRight, Layout, Activity, Award, 
-  MessageSquare, Lightbulb, Users, CheckCircle, Calendar, XCircle, AlertCircle 
+  MessageSquare, Lightbulb, Users, CheckCircle, Calendar, XCircle, AlertCircle, Play, Key
 } from 'lucide-react'
 
 const Dashboard = () => {
   const { user } = useAuth()
+  const { courseSlug } = useCourse()
   const [stats, setStats] = useState(null)
   const [activities, setActivities] = useState([])
   const [loading, setLoading] = useState(true)
   const [activitiesLoading, setActivitiesLoading] = useState(true)
+  const [examData, setExamData] = useState({ exams: [], summary: {} })
+  const [examCountdown, setExamCountdown] = useState(null)
 
   useEffect(() => {
     fetchDashboardStats()
     fetchRecentActivity()
+    fetchStudentExams()
   }, [])
+
+  const fetchStudentExams = async () => {
+    try {
+      const res = await examApi.student.myExams()
+      const payload = res.data || res || { exams: [], summary: {} }
+      setExamData(payload)
+      if (payload.summary?.upcoming_exam) {
+        setExamCountdown(payload.summary.upcoming_exam.startsInSeconds || 0)
+      }
+    } catch (error) {
+      console.warn('Failed to fetch student exams:', error)
+    }
+  }
+
+  useEffect(() => {
+    if (examCountdown === null || examCountdown <= 0) return
+    const timer = setInterval(() => {
+      setExamCountdown(prev => {
+        if (prev <= 1) {
+          clearInterval(timer)
+          return 0
+        }
+        return prev - 1
+      })
+    }, 1000)
+    return () => clearInterval(timer)
+  }, [examCountdown])
+
+  const formatCountdown = (totalSec) => {
+    if (totalSec <= 0) return '00:00:00'
+    const hours = Math.floor(totalSec / 3600)
+    const mins = Math.floor((totalSec % 3600) / 60)
+    const secs = totalSec % 60
+    return `${hours.toString().padStart(2, '0')}h : ${mins.toString().padStart(2, '0')}m : ${secs.toString().padStart(2, '0')}s`
+  }
 
   const fetchDashboardStats = async () => {
     try {
@@ -187,6 +228,72 @@ const Dashboard = () => {
               <ResumeLearning />
             </div>
 
+            {/* UPCOMING EXAM ALERT & LIVE COUNTDOWN CLOCK */}
+            {examData.summary?.upcoming_exam && (
+              <div className="card shadow-soft mb-8" style={{
+                background: 'linear-gradient(135deg, #eef2ff 0%, #ffffff 100%)',
+                border: '1px solid #c7d2fe',
+                borderRadius: '16px',
+                padding: '22px 24px'
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
+                  <div style={{ flex: '1 1 320px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+                      <span style={{
+                        background: examData.summary.upcoming_exam.isLiveNow || examCountdown <= 0 ? '#fee2e2' : '#fef3c7',
+                        color: examData.summary.upcoming_exam.isLiveNow || examCountdown <= 0 ? '#b91c1c' : '#b45309',
+                        padding: '2px 8px', borderRadius: '999px', fontSize: '11px', fontWeight: 700
+                      }}>
+                        {examData.summary.upcoming_exam.isLiveNow || examCountdown <= 0 ? '🔴 LIVE NOW' : 'UPCOMING WRITTEN EXAM'}
+                      </span>
+                      <span style={{ fontSize: '12px', color: '#64748b' }}>
+                        Code: <strong>{examData.summary.upcoming_exam.assignment_code}</strong>
+                      </span>
+                    </div>
+
+                    <h3 style={{ fontSize: '18px', fontWeight: 800, margin: '0 0 4px', color: '#0f172a' }}>
+                      {examData.summary.upcoming_exam.title}
+                    </h3>
+                    <p style={{ margin: 0, fontSize: '13px', color: '#64748b' }}>
+                      Subject: <strong>{examData.summary.upcoming_exam.subject || 'General'}</strong> • Duration: <strong>{examData.summary.upcoming_exam.duration_minutes} Mins</strong> • Total Marks: <strong>{examData.summary.upcoming_exam.total_marks}</strong>
+                    </p>
+
+                    {examData.summary.upcoming_exam.otp_code && (
+                      <div style={{ marginTop: '10px', display: 'inline-flex', alignItems: 'center', gap: '6px', background: '#ffffff', border: '1px solid #cbd5e1', padding: '4px 10px', borderRadius: '6px' }}>
+                        <span style={{ fontSize: '11px', color: '#64748b' }}>Your Passcode (OTP):</span>
+                        <strong style={{ fontFamily: 'monospace', fontSize: '14px', color: '#4f46e5', letterSpacing: '1px' }}>
+                          {examData.summary.upcoming_exam.otp_code}
+                        </strong>
+                      </div>
+                    )}
+                  </div>
+
+                  <div style={{ textAlign: 'center', background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '14px 22px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
+                    <div style={{ fontSize: '11px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginBottom: '2px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
+                      <Clock size={12} color="#4f46e5" />
+                      {examData.summary.upcoming_exam.isLiveNow || examCountdown <= 0 ? 'Examination Status' : 'Starts In'}
+                    </div>
+
+                    <div style={{ 
+                      fontSize: '22px', 
+                      fontWeight: 800, 
+                      fontFamily: 'monospace', 
+                      color: examData.summary.upcoming_exam.isLiveNow || examCountdown <= 0 ? '#16a34a' : '#4f46e5',
+                      margin: '2px 0 10px'
+                    }}>
+                      {examData.summary.upcoming_exam.isLiveNow || examCountdown <= 0 ? 'READY TO START' : formatCountdown(examCountdown)}
+                    </div>
+
+                    <Link to={`/exam/${examData.summary.upcoming_exam.assignment_code}`}>
+                      <Button variant="primary" size="small" style={{ width: '100%' }}>
+                        {examData.summary.upcoming_exam.isLiveNow || examCountdown <= 0 ? 'Start Exam Now' : 'Open Exam Portal'}
+                      </Button>
+                    </Link>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Recent Activity Section */}
             <div className="section-header-modern">
               <h2 className="section-title-modern">
@@ -313,6 +420,40 @@ const Dashboard = () => {
               <Link to="/users/profile" className="w-full mt-4">
                 <Button variant="secondary" className="w-full">View Profile</Button>
               </Link>
+            </div>
+
+            {/* Written Exams Summary Widget */}
+            <div className="card mt-6 shadow-soft" style={{ borderRadius: '12px', padding: '18px 20px', background: '#ffffff', border: '1px solid #e2e8f0' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 700, color: '#1e293b', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <Award size={16} color="#4f46e5" /> Written Exams
+                </h4>
+                <Link to={courseSlug ? `/${courseSlug}/student/exams` : '/student/exams'} style={{ fontSize: '12px', color: '#4f46e5', fontWeight: 600, textDecoration: 'none' }}>
+                  View All &rarr;
+                </Link>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '10px', marginBottom: '12px' }}>
+                <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '10px', textAlign: 'center' }}>
+                  <span style={{ fontSize: '11px', color: '#64748b', display: 'block', textTransform: 'uppercase', fontWeight: 600 }}>Assigned</span>
+                  <strong style={{ fontSize: '18px', color: '#0f172a' }}>{examData.summary?.total_assigned || 0}</strong>
+                </div>
+                <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '10px', textAlign: 'center' }}>
+                  <span style={{ fontSize: '11px', color: '#64748b', display: 'block', textTransform: 'uppercase', fontWeight: 600 }}>Attended</span>
+                  <strong style={{ fontSize: '18px', color: '#16a34a' }}>{examData.summary?.attended_count || 0}</strong>
+                </div>
+              </div>
+
+              {examData.summary?.average_score ? (
+                <div style={{ background: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: '8px', padding: '8px 12px', fontSize: '12px', color: '#065f46', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span>Average Score:</span>
+                  <strong>{examData.summary.average_score}%</strong>
+                </div>
+              ) : (
+                <div style={{ fontSize: '11px', color: '#94a3b8', textAlign: 'center' }}>
+                  Attend exams to view marks and rank
+                </div>
+              )}
             </div>
 
             <div className="card mt-6 shadow-soft">

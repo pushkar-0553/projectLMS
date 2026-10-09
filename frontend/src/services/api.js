@@ -30,7 +30,7 @@ api.interceptors.request.use(
       'login', 'super-admin', 'resumes', 'public', 'users', 'admin',
       'coordinator', 'student', 'dashboard', 'my-progress', 'academic-progress',
       'project-learning', 'guided-learning', 'messages', 'notifications',
-      'change-password', 'faculty'
+      'change-password', 'faculty', 'exam'
     ];
     if (pathParts.length > 0 && !reserved.includes(pathParts[0])) {
       config.headers['X-Course-Slug'] = pathParts[0];
