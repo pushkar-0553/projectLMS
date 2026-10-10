@@ -2,10 +2,14 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
 import { examApi as api } from '../../services/examApi';
 import { indexedDbService } from '../../services/indexedDbService';
+import MonacoCodeEditor from '../../components/exams/MonacoCodeEditor';
+import WebSearchPanel from '../../components/exams/WebSearchPanel';
+import AiAssistantPanel from '../../components/exams/AiAssistantPanel';
 import '../../styles/examSystem.css';
 import { 
   Shield, AlertTriangle, Clock, CheckCircle2, CloudCheck, WifiOff, 
-  ChevronLeft, ChevronRight, Send, AlertOctagon, Maximize2, Lock, FileText, Check
+  ChevronLeft, ChevronRight, Send, AlertOctagon, Maximize2, Lock, FileText, Check,
+  Code, Search, Bot, Sparkles, X, PanelRightClose, PanelRightOpen
 } from 'lucide-react';
 
 export default function StudentExamPortal({ assignmentCode: propAssignmentCode }) {
@@ -26,8 +30,12 @@ export default function StudentExamPortal({ assignmentCode: propAssignmentCode }
   // Exam progress state
   const [currentSectionIdx, setCurrentSectionIdx] = useState(0);
   const [currentQuestionIdx, setCurrentQuestionIdx] = useState(0);
-  const [answers, setAnswers] = useState({}); // { [questionId]: { text, option, version, clientUpdatedAt } }
+  const [answers, setAnswers] = useState({}); // { [questionId]: { text, option, codeContent, codeLanguage, version, clientUpdatedAt } }
   const [markedForReview, setMarkedForReview] = useState({}); // { [questionId]: boolean }
+
+  // Capability Tools State: 'CODE' | 'SEARCH' | 'AI' | 'NONE'
+  const [activeTool, setActiveTool] = useState('CODE');
+  const [toolPanelOpen, setToolPanelOpen] = useState(true);
 
   // Sync & network status
   const [saveStatus, setSaveStatus] = useState('SYNCED'); // 'SAVING_LOCAL' | 'SAVED_LOCAL' | 'SYNCING' | 'SYNCED' | 'OFFLINE'
@@ -82,6 +90,121 @@ export default function StudentExamPortal({ assignmentCode: propAssignmentCode }
     return () => clearInterval(timer);
   }, [stage, remainingSeconds]);
 
+  // Auto-adapt tool panel when navigating to questions (open Monaco for CODE, clean full-width for MCQ)
+  useEffect(() => {
+    if (stage !== 'IN_EXAM' || !examData) return;
+    const currentSec = examData.paper?.sections?.[currentSectionIdx];
+    const currentQ = currentSec?.questions?.[currentQuestionIdx];
+    if (!currentQ) return;
+
+    const currentCapabilities = currentQ.capabilities || currentSec?.default_capabilities || ['CODE_EDITOR'];
+    const hasCode = currentCapabilities.includes('CODE_EDITOR');
+    if (currentQ.question_type === 'CODE' && hasCode) {
+      setActiveTool('CODE');
+      setToolPanelOpen(true);
+    } else if (currentQ.question_type === 'MCQ') {
+      setToolPanelOpen(false);
+    }
+  }, [currentQuestionIdx, currentSectionIdx, stage, examData]);
+
+  // Session bootstrap helper (used by both OTP verification and refresh recovery)
+  const bootstrapExamSession = async (sessionData, jumpToExam = false) => {
+    const { sessionToken, assignment, sections, candidate, savedAnswers, violationCount, timing, status } = sessionData;
+    
+    const normalizedCandidate = {
+      ...candidate,
+      name: candidate?.name || candidate?.snapshot_student_name,
+      batch: candidate?.batch || candidate?.snapshot_batch_name
+    };
+
+    const normalizedAssignment = {
+      ...assignment,
+      durationMinutes: assignment?.durationMinutes || assignment?.duration_minutes || 60,
+      totalMarks: assignment?.totalMarks || assignment?.total_marks || 100,
+      passMarks: assignment?.passMarks || assignment?.pass_marks || 40
+    };
+
+    const paperData = {
+      title: assignment?.title,
+      instructions: assignment?.instructions,
+      sections: sections || []
+    };
+
+    setSessionToken(sessionToken);
+    setExamData({ assignment: normalizedAssignment, paper: paperData });
+    setCandidateInfo(normalizedCandidate);
+    setViolations(violationCount || 0);
+
+    const remaining = timing?.remainingSeconds ?? 3600;
+    setRemainingSeconds(remaining);
+
+    // Merge answers from server with local IndexedDB device cache
+    const localCached = await indexedDbService.getAllLocalAnswers(sessionToken);
+    const merged = {};
+
+    if (Array.isArray(savedAnswers)) {
+      savedAnswers.forEach(ans => {
+        merged[ans.question_id] = {
+          text: ans.answer_text,
+          option: ans.selected_option,
+          codeContent: ans.code_content,
+          codeLanguage: ans.code_language,
+          version: ans.version || 1,
+          clientUpdatedAt: ans.client_updated_at
+        };
+      });
+    }
+
+    Object.keys(localCached).forEach(qId => {
+      const localItem = localCached[qId];
+      const serverItem = merged[qId];
+      if (!serverItem || (localItem.version || 1) >= (serverItem.version || 1)) {
+        merged[qId] = {
+          text: localItem.answerText,
+          option: localItem.selectedOption,
+          codeContent: localItem.codeContent,
+          codeLanguage: localItem.codeLanguage,
+          version: localItem.version || 1,
+          clientUpdatedAt: localItem.clientUpdatedAt
+        };
+      }
+    });
+
+    setAnswers(merged);
+
+    await indexedDbService.saveSession({
+      sessionToken,
+      assignmentCode,
+      studentName: normalizedCandidate.name,
+      expectedEndAt: timing?.expectedEndAt
+    });
+
+    if (status === 'SUBMITTED' || status === 'AUTO_SUBMITTED') {
+      setStage(status === 'AUTO_SUBMITTED' ? 'AUTO_SUBMITTED' : 'SUBMITTED');
+    } else if (jumpToExam) {
+      setStage('IN_EXAM');
+    } else {
+      setStage('BRIEFING');
+    }
+  };
+
+  // Auto-recovery on accidental refresh
+  useEffect(() => {
+    const savedOtp = sessionStorage.getItem(`exam_active_otp_${assignmentCode}`);
+    if (savedOtp && stage === 'OTP_VERIFICATION') {
+      setOtp(savedOtp);
+      api.studentExam.verifyOtp(assignmentCode, savedOtp)
+        .then(res => {
+          if (res.success && res.data) {
+            bootstrapExamSession(res.data, true);
+          }
+        })
+        .catch(() => {
+          sessionStorage.removeItem(`exam_active_otp_${assignmentCode}`);
+        });
+    }
+  }, [assignmentCode]);
+
   // 3. OTP Verification
   const handleVerifyOtp = async (e) => {
     e.preventDefault();
@@ -92,80 +215,8 @@ export default function StudentExamPortal({ assignmentCode: propAssignmentCode }
     try {
       const res = await api.studentExam.verifyOtp(assignmentCode, otp);
       if (res.success && res.data) {
-        const { sessionToken, assignment, sections, candidate, savedAnswers, violationCount, timing } = res.data;
-        
-        const normalizedCandidate = {
-          ...candidate,
-          name: candidate.name || candidate.snapshot_student_name,
-          batch: candidate.batch || candidate.snapshot_batch_name
-        };
-
-        const normalizedAssignment = {
-          ...assignment,
-          durationMinutes: assignment.durationMinutes || assignment.duration_minutes || 60,
-          totalMarks: assignment.totalMarks || assignment.total_marks || 100,
-          passMarks: assignment.passMarks || assignment.pass_marks || 40
-        };
-
-        const paperData = {
-          title: assignment.title,
-          instructions: assignment.instructions,
-          sections: sections || []
-        };
-
-        setSessionToken(sessionToken);
-        setExamData({ assignment: normalizedAssignment, paper: paperData });
-        setCandidateInfo(normalizedCandidate);
-        setViolations(violationCount || 0);
-
-        // Timer remaining from server timing object or expectedEndAt
-        const remaining = timing?.remainingSeconds ?? 3600;
-        setRemainingSeconds(remaining);
-
-        // Load existing answers: merge server answers with IndexedDB local cache
-        const localCached = await indexedDbService.getAllLocalAnswers(sessionToken);
-        const merged = {};
-
-        // Populate from server savedAnswers array
-        if (Array.isArray(savedAnswers)) {
-          savedAnswers.forEach(ans => {
-            merged[ans.question_id] = {
-              text: ans.answer_text,
-              option: ans.selected_option,
-              version: ans.version || 1,
-              clientUpdatedAt: ans.client_updated_at
-            };
-          });
-        }
-
-        Object.keys(localCached).forEach(qId => {
-          const localItem = localCached[qId];
-          const serverItem = merged[qId];
-          if (!serverItem || (localItem.version || 1) >= (serverItem.version || 1)) {
-            merged[qId] = {
-              text: localItem.answerText,
-              option: localItem.selectedOption,
-              version: localItem.version || 1,
-              clientUpdatedAt: localItem.clientUpdatedAt
-            };
-          }
-        });
-
-        setAnswers(merged);
-
-        // Save session locally
-        await indexedDbService.saveSession({
-          sessionToken,
-          assignmentCode,
-          studentName: normalizedCandidate.name,
-          expectedEndAt: timing?.expectedEndAt
-        });
-
-        if (res.data.status === 'SUBMITTED' || res.data.status === 'AUTO_SUBMITTED') {
-          setStage(res.data.status === 'AUTO_SUBMITTED' ? 'AUTO_SUBMITTED' : 'SUBMITTED');
-        } else {
-          setStage('BRIEFING');
-        }
+        sessionStorage.setItem(`exam_active_otp_${assignmentCode}`, otp.trim());
+        await bootstrapExamSession(res.data, false);
       }
     } catch (err) {
       setError(err.message || 'Verification failed. Please check your passcode.');
@@ -187,11 +238,13 @@ export default function StudentExamPortal({ assignmentCode: propAssignmentCode }
   };
 
   // 5. Answer Update (Multi-Layer: React State -> IndexedDB -> Debounced Server Sync)
-  const handleAnswerChange = (questionId, newText, newOption) => {
+  const handleAnswerChange = (questionId, newText, newOption, newCode, newLang) => {
     const current = answers[questionId] || { version: 0 };
     const updated = {
       text: newText !== undefined ? newText : current.text,
       option: newOption !== undefined ? newOption : current.option,
+      codeContent: newCode !== undefined ? newCode : current.codeContent,
+      codeLanguage: newLang !== undefined ? newLang : current.codeLanguage,
       version: (current.version || 0) + 1,
       clientUpdatedAt: new Date().toISOString()
     };
@@ -200,13 +253,15 @@ export default function StudentExamPortal({ assignmentCode: propAssignmentCode }
     setAnswers(prev => ({ ...prev, [questionId]: updated }));
     setSaveStatus('SAVING_LOCAL');
 
-    // Layer 2: IndexedDB instantaneous local persistence
+    // Layer 2: IndexedDB instantaneous local persistence (preserves code + answers locally)
     indexedDbService.saveAnswerLocally(
       sessionToken,
       questionId,
       updated.text,
       updated.option,
-      updated.version
+      updated.version,
+      updated.codeContent,
+      updated.codeLanguage
     ).then(() => {
       setSaveStatus(isOnline ? 'SAVED_LOCAL' : 'OFFLINE');
     });
@@ -233,6 +288,8 @@ export default function StudentExamPortal({ assignmentCode: propAssignmentCode }
         questionId: u.questionId,
         answerText: u.answerText,
         selectedOption: u.selectedOption,
+        codeContent: u.codeContent,
+        codeLanguage: u.codeLanguage,
         version: u.version,
         clientUpdatedAt: u.clientUpdatedAt
       }));
@@ -363,8 +420,9 @@ export default function StudentExamPortal({ assignmentCode: propAssignmentCode }
       const res = await api.studentExam.submitExam(sessionToken);
       setSubmitResult(res);
 
-      // 3. Clear local cache
+      // 3. Clear local cache & session tokens
       await indexedDbService.clearSessionData(sessionToken);
+      sessionStorage.removeItem(`exam_active_otp_${assignmentCode}`);
 
       // 4. Exit fullscreen
       if (document.fullscreenElement) {
@@ -688,118 +746,286 @@ export default function StudentExamPortal({ assignmentCode: propAssignmentCode }
             ))}
           </div>
 
-          {currentQuestion ? (
-            <div style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
-              {/* Question Header & Meta */}
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <span style={{ fontSize: '18px', fontWeight: 'bold' }}>
-                    Question {currentQuestion.question_order || currentQuestionIdx + 1}
-                  </span>
-                  <span className="badge badge-primary">{currentQuestion.question_type}</span>
-                  <span className="badge badge-muted">{currentQuestion.difficulty}</span>
-                </div>
-                <div style={{ fontWeight: 'bold', color: 'var(--text-accent)' }}>
-                  Marks: {currentQuestion.marks}
-                </div>
-              </div>
+          {currentQuestion ? (() => {
+            const currentCapabilities = currentQuestion.capabilities || currentSection?.default_capabilities || ['CODE_EDITOR'];
+            const hasCode = currentCapabilities.includes('CODE_EDITOR');
+            const hasSearch = currentCapabilities.includes('WEB_SEARCH');
+            const hasAi = currentCapabilities.includes('AI_ASSISTANT');
+            const hasAnyTools = hasCode || hasSearch || hasAi;
 
-              {/* Question Content */}
-              <div style={{ 
-                background: 'var(--bg-surface)', border: '1px solid var(--border-default)', borderRadius: 'var(--radius-lg)', 
-                padding: '20px', marginBottom: '24px', fontSize: '16px', lineHeight: '1.6', whiteSpace: 'pre-wrap' 
-              }}>
-                {currentQuestion.question_text}
-              </div>
-
-              {/* Answer Input Area */}
-              <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-                <label className="label" style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span>Your Answer:</span>
-                  <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                    Autosaving continuously to device
-                  </span>
-                </label>
-
-                {currentQuestion.question_type === 'MCQ' ? (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '8px' }}>
-                    {(currentQuestion.options || []).map((opt, oIdx) => {
-                      const isSelected = currentAnswer.option === opt;
-                      return (
-                        <div
-                          key={oIdx}
-                          onClick={() => handleAnswerChange(currentQuestion.id, undefined, opt)}
-                          style={{
-                            background: isSelected ? 'rgba(99, 102, 241, 0.12)' : 'var(--bg-surface)',
-                            border: `2px solid ${isSelected ? 'var(--primary)' : 'var(--border-default)'}`,
-                            borderRadius: 'var(--radius-md)',
-                            padding: '14px 18px',
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '12px',
-                            transition: 'all 0.15s ease'
-                          }}
-                        >
-                          <div style={{
-                            width: '20px', height: '20px', borderRadius: '50%',
-                            border: `2px solid ${isSelected ? 'var(--primary)' : 'var(--border-default)'}`,
-                            display: 'flex', alignItems: 'center', justifyContent: 'center'
-                          }}>
-                            {isSelected && <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: 'var(--primary)' }} />}
-                          </div>
-                          <span style={{ fontSize: '15px' }}>{opt}</span>
-                        </div>
-                      );
-                    })}
+            return (
+              <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+                {/* Phase 6 Toolbar: Question X | Remaining Time | [Code] [Search] [AI] */}
+                <div style={{ 
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between', 
+                  padding: '10px 16px', background: 'var(--bg-surface)', border: '1px solid var(--border-default)', 
+                  borderRadius: 'var(--radius-lg)', marginBottom: '16px', flexWrap: 'wrap', gap: '10px' 
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <span style={{ fontSize: '17px', fontWeight: 'bold' }}>
+                      Question {currentQuestion.question_order || currentQuestionIdx + 1}
+                    </span>
+                    <span className="badge badge-primary">{currentQuestion.question_type}</span>
+                    <span className="badge badge-muted">{currentQuestion.difficulty}</span>
+                    <span style={{ fontSize: '13px', fontWeight: 'bold', color: 'var(--text-accent)' }}>
+                      Marks: {currentQuestion.marks}
+                    </span>
                   </div>
-                ) : (
-                  <textarea
-                    value={currentAnswer.text || ''}
-                    onChange={(e) => handleAnswerChange(currentQuestion.id, e.target.value, undefined)}
-                    placeholder="Type your comprehensive written answer here. You can use code formatting, bullet points, and numbered lists..."
-                    className="textarea font-mono"
-                    style={{ flex: 1, minHeight: '260px', fontSize: '15px', lineHeight: '1.6', padding: '16px' }}
-                  />
-                )}
+
+                  {/* Toolbar Right: Question countdown & Tool Switchers */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <div style={{
+                      display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px',
+                      fontWeight: 700, color: remainingSeconds < 300 ? '#ef4444' : '#10b981',
+                      background: remainingSeconds < 300 ? 'rgba(239,68,68,0.1)' : 'rgba(16,185,129,0.1)',
+                      padding: '4px 10px', borderRadius: '8px', border: `1px solid ${remainingSeconds < 300 ? '#fca5a5' : '#bbf7d0'}`
+                    }}>
+                      <Clock size={14} />
+                      <span>{formatTime(remainingSeconds)}</span>
+                    </div>
+
+                    {/* ONLY enabled tools appear */}
+                    {hasAnyTools ? (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px', background: '#f1f5f9', padding: '3px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                        {hasCode && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (activeTool === 'CODE' && toolPanelOpen) {
+                                setToolPanelOpen(false);
+                              } else {
+                                setActiveTool('CODE');
+                                setToolPanelOpen(true);
+                              }
+                            }}
+                            className={`btn btn-sm`}
+                            style={{
+                              padding: '4px 10px', fontSize: '12px', gap: '5px', borderRadius: '6px', fontWeight: 600,
+                              background: activeTool === 'CODE' && toolPanelOpen ? 'var(--primary)' : 'transparent',
+                              color: activeTool === 'CODE' && toolPanelOpen ? '#ffffff' : '#334155',
+                              border: 'none', cursor: 'pointer'
+                            }}
+                          >
+                            <Code size={13} /> Code
+                          </button>
+                        )}
+
+                        {hasSearch && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (activeTool === 'SEARCH' && toolPanelOpen) {
+                                setToolPanelOpen(false);
+                              } else {
+                                setActiveTool('SEARCH');
+                                setToolPanelOpen(true);
+                              }
+                            }}
+                            className={`btn btn-sm`}
+                            style={{
+                              padding: '4px 10px', fontSize: '12px', gap: '5px', borderRadius: '6px', fontWeight: 600,
+                              background: activeTool === 'SEARCH' && toolPanelOpen ? '#0284c7' : 'transparent',
+                              color: activeTool === 'SEARCH' && toolPanelOpen ? '#ffffff' : '#334155',
+                              border: 'none', cursor: 'pointer'
+                            }}
+                          >
+                            <Search size={13} /> Search
+                          </button>
+                        )}
+
+                        {hasAi && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (activeTool === 'AI' && toolPanelOpen) {
+                                setToolPanelOpen(false);
+                              } else {
+                                setActiveTool('AI');
+                                setToolPanelOpen(true);
+                              }
+                            }}
+                            className={`btn btn-sm`}
+                            style={{
+                              padding: '4px 10px', fontSize: '12px', gap: '5px', borderRadius: '6px', fontWeight: 600,
+                              background: activeTool === 'AI' && toolPanelOpen ? '#7c3aed' : 'transparent',
+                              color: activeTool === 'AI' && toolPanelOpen ? '#ffffff' : '#334155',
+                              border: 'none', cursor: 'pointer'
+                            }}
+                          >
+                            <Bot size={13} /> AI
+                          </button>
+                        )}
+
+                        {toolPanelOpen && (
+                          <button
+                            type="button"
+                            onClick={() => setToolPanelOpen(false)}
+                            title="Close tool panel"
+                            style={{
+                              background: 'transparent', border: 'none', color: '#94a3b8',
+                              cursor: 'pointer', padding: '3px 6px', borderRadius: '4px', display: 'flex', alignItems: 'center'
+                            }}
+                          >
+                            <X size={13} />
+                          </button>
+                        )}
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+
+                {/* Main Question & Tool Split Workspace */}
+                <div style={{ display: 'flex', gap: '20px', flex: 1, minHeight: 0 }}>
+                  {/* Left Column: Question Details & Answers */}
+                  <div style={{
+                    flex: (hasAnyTools && toolPanelOpen) ? 1 : '1 1 100%',
+                    display: 'flex', flexDirection: 'column', minWidth: '320px',
+                    overflowY: 'auto', paddingRight: (hasAnyTools && toolPanelOpen) ? '4px' : 0
+                  }}>
+                    {/* Question Content */}
+                    <div style={{ 
+                      background: 'var(--bg-surface)', border: '1px solid var(--border-default)', borderRadius: 'var(--radius-lg)', 
+                      padding: '20px', marginBottom: '20px', fontSize: '15px', lineHeight: '1.6', whiteSpace: 'pre-wrap' 
+                    }}>
+                      {currentQuestion.question_text}
+                    </div>
+
+                    {/* Answer Input Area */}
+                    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', marginBottom: '16px' }}>
+                      <label className="label" style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+                        <span>Written Answer / Solution Notes:</span>
+                        <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                          Autosaving continuously to device vault
+                        </span>
+                      </label>
+
+                      {currentQuestion.question_type === 'MCQ' ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                          {(currentQuestion.options || []).map((opt, oIdx) => {
+                            const isSelected = currentAnswer.option === opt;
+                            return (
+                              <div
+                                key={oIdx}
+                                onClick={() => handleAnswerChange(currentQuestion.id, undefined, opt, undefined, undefined)}
+                                style={{
+                                  background: isSelected ? 'rgba(99, 102, 241, 0.12)' : 'var(--bg-surface)',
+                                  border: `2px solid ${isSelected ? 'var(--primary)' : 'var(--border-default)'}`,
+                                  borderRadius: 'var(--radius-md)',
+                                  padding: '12px 16px',
+                                  cursor: 'pointer',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '12px',
+                                  transition: 'all 0.15s ease'
+                                }}
+                              >
+                                <div style={{
+                                  width: '18px', height: '18px', borderRadius: '50%',
+                                  border: `2px solid ${isSelected ? 'var(--primary)' : 'var(--border-default)'}`,
+                                  display: 'flex', alignItems: 'center', justifyContent: 'center'
+                                }}>
+                                  {isSelected && <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--primary)' }} />}
+                                </div>
+                                <span style={{ fontSize: '14px' }}>{opt}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <textarea
+                          value={currentAnswer.text || ''}
+                          onChange={(e) => handleAnswerChange(currentQuestion.id, e.target.value, undefined, undefined, undefined)}
+                          placeholder="Type your explanation, proofs, or notes here. If code is requested, you can write or edit it directly in the Code Editor panel on the right..."
+                          className="textarea font-mono"
+                          style={{
+                            flex: 1, minHeight: (hasAnyTools && toolPanelOpen) ? '200px' : '300px',
+                            fontSize: '14px', lineHeight: '1.6', padding: '14px'
+                          }}
+                        />
+                      )}
+                    </div>
+
+                    {/* Bottom Nav Controls */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '16px', borderTop: '1px solid var(--border-subtle)' }}>
+                      <button
+                        onClick={() => setCurrentQuestionIdx(prev => Math.max(0, prev - 1))}
+                        disabled={currentQuestionIdx === 0}
+                        className="btn btn-secondary"
+                      >
+                        <ChevronLeft size={18} />
+                        Previous Question
+                      </button>
+
+                      <button
+                        onClick={() => setMarkedForReview(prev => ({ ...prev, [currentQuestion.id]: !prev[currentQuestion.id] }))}
+                        className={`btn ${markedForReview[currentQuestion.id] ? 'btn-danger' : 'btn-secondary'}`}
+                      >
+                        {markedForReview[currentQuestion.id] ? 'Marked for Review ★' : 'Mark for Review'}
+                      </button>
+
+                      <button
+                        onClick={() => {
+                          if (currentQuestionIdx < currentSection.questions.length - 1) {
+                            setCurrentQuestionIdx(prev => prev + 1);
+                          } else if (currentSectionIdx < sections.length - 1) {
+                            setCurrentSectionIdx(prev => prev + 1);
+                            setCurrentQuestionIdx(0);
+                          }
+                        }}
+                        disabled={currentQuestionIdx === currentSection.questions.length - 1 && currentSectionIdx === sections.length - 1}
+                        className="btn btn-primary"
+                      >
+                        Next Question
+                        <ChevronRight size={18} />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Right Column: Docked Tool Panel (Code Editor, Web Search, or AI Assistant) */}
+                  {hasAnyTools && toolPanelOpen && (
+                    <div style={{
+                      flex: 1.15, display: 'flex', flexDirection: 'column',
+                      minWidth: '380px', height: '100%', minHeight: 0
+                    }}>
+                      {activeTool === 'CODE' && hasCode && (
+                        <MonacoCodeEditor
+                          code={currentAnswer.codeContent || ''}
+                          language={currentAnswer.codeLanguage || 'python'}
+                          onChange={(newCode, newLang) => {
+                            handleAnswerChange(currentQuestion.id, undefined, undefined, newCode, newLang);
+                          }}
+                        />
+                      )}
+
+                      {activeTool === 'SEARCH' && hasSearch && (
+                        <WebSearchPanel
+                          sessionToken={sessionToken}
+                          questionId={currentQuestion.id}
+                          onInsertSnippet={(snippet) => {
+                            const prev = currentAnswer.text || '';
+                            handleAnswerChange(currentQuestion.id, (prev ? prev + '\n\n' : '') + snippet, undefined, undefined, undefined);
+                          }}
+                        />
+                      )}
+
+                      {activeTool === 'AI' && hasAi && (
+                        <AiAssistantPanel
+                          sessionToken={sessionToken}
+                          questionId={currentQuestion.id}
+                          questionText={currentQuestion.question_text}
+                          codeContext={currentAnswer.codeContent || ''}
+                          onInsertExplanation={(explanation) => {
+                            const prev = currentAnswer.text || '';
+                            handleAnswerChange(currentQuestion.id, (prev ? prev + '\n\n' : '') + explanation, undefined, undefined, undefined);
+                          }}
+                        />
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
-
-              {/* Bottom Nav Controls */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '24px', paddingTop: '16px', borderTop: '1px solid var(--border-subtle)' }}>
-                <button
-                  onClick={() => setCurrentQuestionIdx(prev => Math.max(0, prev - 1))}
-                  disabled={currentQuestionIdx === 0}
-                  className="btn btn-secondary"
-                >
-                  <ChevronLeft size={18} />
-                  Previous Question
-                </button>
-
-                <button
-                  onClick={() => setMarkedForReview(prev => ({ ...prev, [currentQuestion.id]: !prev[currentQuestion.id] }))}
-                  className={`btn ${markedForReview[currentQuestion.id] ? 'btn-danger' : 'btn-secondary'}`}
-                >
-                  {markedForReview[currentQuestion.id] ? 'Marked for Review ★' : 'Mark for Review'}
-                </button>
-
-                <button
-                  onClick={() => {
-                    if (currentQuestionIdx < currentSection.questions.length - 1) {
-                      setCurrentQuestionIdx(prev => prev + 1);
-                    } else if (currentSectionIdx < sections.length - 1) {
-                      setCurrentSectionIdx(prev => prev + 1);
-                      setCurrentQuestionIdx(0);
-                    }
-                  }}
-                  disabled={currentQuestionIdx === currentSection.questions.length - 1 && currentSectionIdx === sections.length - 1}
-                  className="btn btn-primary"
-                >
-                  Next Question
-                  <ChevronRight size={18} />
-                </button>
-              </div>
-            </div>
-          ) : (
+            );
+          })() : (
             <div style={{ textAlign: 'center', color: 'var(--text-muted)', margin: 'auto' }}>
               No questions found in this section.
             </div>

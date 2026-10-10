@@ -49,11 +49,11 @@ class SocketService {
         })
 
         this.socket.on('connect_error', (error) => {
-          console.error('Socket connection error:', error)
           this.reconnectAttempts++
-          
+          if (this.reconnectAttempts === 1) {
+            console.warn('Realtime socket server connection unavailable (offline/disconnected). Retrying quietly...');
+          }
           if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-            console.error('Max reconnection attempts reached')
             this.emit('socket:connection_failed', { error, attempts: this.reconnectAttempts })
             reject(error)
           }

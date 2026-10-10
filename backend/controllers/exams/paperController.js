@@ -32,7 +32,11 @@ async function getPaperById(req, res) {
 
 async function getVersionDetails(req, res) {
   try {
-    const version = await paperService.getVersionDetails(req.params.versionId);
+    const versionId = req.params.versionId;
+    if (!versionId || versionId === 'undefined' || isNaN(parseInt(versionId, 10))) {
+      return res.status(400).json({ success: false, message: 'Invalid or missing version ID.' });
+    }
+    const version = await paperService.getVersionDetails(versionId);
     if (!version) return res.status(404).json({ success: false, message: 'Version not found.' });
     res.json({ success: true, data: version });
   } catch (err) {
@@ -42,7 +46,11 @@ async function getVersionDetails(req, res) {
 
 async function createNewVersion(req, res) {
   try {
-    const result = await paperService.createNewVersion(req.params.id, req.body, req.user.id);
+    const paperId = req.params.id;
+    if (!paperId || paperId === 'undefined' || isNaN(parseInt(paperId, 10))) {
+      return res.status(400).json({ success: false, message: 'Invalid paper ID.' });
+    }
+    const result = await paperService.createNewVersion(paperId, req.body, req.user.id);
     res.status(201).json({ success: true, ...result });
   } catch (err) {
     res.status(400).json({ success: false, message: err.message });
@@ -51,7 +59,11 @@ async function createNewVersion(req, res) {
 
 async function publishVersion(req, res) {
   try {
-    const result = await paperService.publishVersion(req.params.versionId, req.user.id);
+    const versionId = req.params.versionId;
+    if (!versionId || versionId === 'undefined' || isNaN(parseInt(versionId, 10))) {
+      return res.status(400).json({ success: false, message: 'Invalid or missing version ID.' });
+    }
+    const result = await paperService.publishVersion(versionId, req.user.id);
     res.json({ success: true, ...result });
   } catch (err) {
     res.status(400).json({ success: false, message: err.message });
@@ -60,7 +72,11 @@ async function publishVersion(req, res) {
 
 async function previewHTML(req, res) {
   try {
-    const version = await paperService.getVersionDetails(req.params.versionId);
+    const versionId = req.params.versionId;
+    if (!versionId || versionId === 'undefined' || isNaN(parseInt(versionId, 10))) {
+      return res.status(400).send('Invalid or missing version ID.');
+    }
+    const version = await paperService.getVersionDetails(versionId);
     if (!version) return res.status(404).send('Version not found.');
     const html = documentService.renderQuestionPaperHTML(version);
     res.setHeader('Content-Type', 'text/html');
@@ -72,7 +88,11 @@ async function previewHTML(req, res) {
 
 async function previewAnswerKeyHTML(req, res) {
   try {
-    const version = await paperService.getVersionDetails(req.params.versionId);
+    const versionId = req.params.versionId;
+    if (!versionId || versionId === 'undefined' || isNaN(parseInt(versionId, 10))) {
+      return res.status(400).send('Invalid or missing version ID.');
+    }
+    const version = await paperService.getVersionDetails(versionId);
     if (!version) return res.status(404).send('Version not found.');
     const html = documentService.renderAnswerKeyHTML(version);
     res.setHeader('Content-Type', 'text/html');
@@ -84,7 +104,11 @@ async function previewAnswerKeyHTML(req, res) {
 
 async function downloadPDF(req, res) {
   try {
-    const version = await paperService.getVersionDetails(req.params.versionId);
+    const versionId = req.params.versionId;
+    if (!versionId || versionId === 'undefined' || isNaN(parseInt(versionId, 10))) {
+      return res.status(400).send('Invalid or missing version ID.');
+    }
+    const version = await paperService.getVersionDetails(versionId);
     if (!version) return res.status(404).send('Version not found.');
     const buffer = await documentService.generateQuestionPaperPDF(version);
     res.setHeader('Content-Type', 'application/pdf');
@@ -97,7 +121,11 @@ async function downloadPDF(req, res) {
 
 async function downloadDOCX(req, res) {
   try {
-    const version = await paperService.getVersionDetails(req.params.versionId);
+    const versionId = req.params.versionId;
+    if (!versionId || versionId === 'undefined' || isNaN(parseInt(versionId, 10))) {
+      return res.status(400).send('Invalid or missing version ID.');
+    }
+    const version = await paperService.getVersionDetails(versionId);
     if (!version) return res.status(404).send('Version not found.');
     const buffer = await documentService.generateQuestionPaperDOCX(version);
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
@@ -105,6 +133,32 @@ async function downloadDOCX(req, res) {
     res.send(buffer);
   } catch (err) {
     res.status(500).send(err.message);
+  }
+}
+
+async function updatePaper(req, res) {
+  try {
+    const paperId = req.params.id;
+    if (!paperId || paperId === 'undefined' || isNaN(parseInt(paperId, 10))) {
+      return res.status(400).json({ success: false, message: 'Invalid paper ID.' });
+    }
+    const result = await paperService.updatePaper(paperId, req.body, req.user.id);
+    res.json({ success: true, ...result });
+  } catch (err) {
+    res.status(400).json({ success: false, message: err.message });
+  }
+}
+
+async function deletePaper(req, res) {
+  try {
+    const paperId = req.params.id;
+    if (!paperId || paperId === 'undefined' || isNaN(parseInt(paperId, 10))) {
+      return res.status(400).json({ success: false, message: 'Invalid paper ID.' });
+    }
+    const result = await paperService.deletePaper(paperId, req.user.id);
+    res.json({ success: true, ...result });
+  } catch (err) {
+    res.status(400).json({ success: false, message: err.message });
   }
 }
 
@@ -118,5 +172,7 @@ module.exports = {
   previewHTML,
   previewAnswerKeyHTML,
   downloadPDF,
-  downloadDOCX
+  downloadDOCX,
+  updatePaper,
+  deletePaper
 };

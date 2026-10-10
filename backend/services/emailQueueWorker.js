@@ -3,6 +3,7 @@ const db = require('../config/db');
 const { decrypt } = require('../config/crypto');
 const { getNextAvailableSmtpAccount } = require('./smtpService');
 const { logAudit } = require('./auditService');
+const { isHttpEmailConfigured, sendEmailViaHttp } = require('./httpEmailSender');
 
 let isWorkerRunning = false;
 let workerIntervalHandle = null;
@@ -78,7 +79,7 @@ function generateExamEmailHtml({ candidateName, batchName, examTitle, durationMi
 /**
  * Queue invitation emails for all candidates of an exam assignment
  */
-async function queueExamEmails(assignmentId, baseUrl = 'http://localhost:5173', userId = null) {
+async function queueExamEmails(assignmentId, frontendBaseUrl = 'https://project-lms-six.vercel.app', apiBaseUrl = null, userId = null) {
   // Fetch assignment & candidates with their OTPs
   const [assignmentRows] = await db.query(`
     SELECT ea.*, p.title as paper_title, b.name as batch_name
@@ -118,7 +119,7 @@ async function queueExamEmails(assignmentId, baseUrl = 'http://localhost:5173', 
       }
     }
 
-    const examUrl = `${baseUrl}/exam/${assignment.assignment_code}`;
+    const examUrl = `${frontendBaseUrl.replace(/\/$/, '')}/exam/${assignment.assignment_code}`;
     const subject = `Official Examination Invitation: ${assignment.title} [Batch ${c.snapshot_batch_name}]`;
 
     // 1. Insert preliminary job to obtain jobId for tracking pixel
@@ -129,7 +130,7 @@ async function queueExamEmails(assignmentId, baseUrl = 'http://localhost:5173', 
     `, [c.id, assignmentId, c.snapshot_student_email, c.snapshot_student_name, subject]);
 
     const jobId = insertResult.insertId;
-    const trackingPixelUrl = `${baseUrl}/api/exams/track-mail/${jobId}`;
+    const trackingPixelUrl = `${(apiBaseUrl || frontendBaseUrl).replace(/\/$/, '')}/api/exams/track-mail/${jobId}`;
 
     const htmlBody = generateExamEmailHtml({
       candidateName: c.snapshot_student_name,
@@ -173,7 +174,7 @@ async function queueExamEmails(assignmentId, baseUrl = 'http://localhost:5173', 
 /**
  * Queue or resend an invitation email for a single candidate specifically
  */
-async function queueCandidateEmail(candidateId, baseUrl = 'http://localhost:5173', userId = null) {
+async function queueCandidateEmail(candidateId, frontendBaseUrl = 'https://project-lms-six.vercel.app', apiBaseUrl = null, userId = null) {
   const [candidates] = await db.query(`
     SELECT eac.*, ea.assignment_code, ea.title as assignment_title, ea.duration_minutes, ea.total_marks,
            eo.encrypted_otp, eo.otp_iv, eo.otp_tag
@@ -195,7 +196,7 @@ async function queueCandidateEmail(candidateId, baseUrl = 'http://localhost:5173
     }
   }
 
-  const examUrl = `${baseUrl}/exam/${c.assignment_code}`;
+  const examUrl = `${frontendBaseUrl.replace(/\/$/, '')}/exam/${c.assignment_code}`;
   const subject = `Official Examination Invitation: ${c.assignment_title} [Batch ${c.snapshot_batch_name}]`;
 
   // Insert fresh email job for candidate
@@ -206,7 +207,7 @@ async function queueCandidateEmail(candidateId, baseUrl = 'http://localhost:5173
   `, [c.id, c.assignment_id, c.snapshot_student_email, c.snapshot_student_name, subject]);
 
   const jobId = insertResult.insertId;
-  const trackingPixelUrl = `${baseUrl}/api/exams/track-mail/${jobId}`;
+  const trackingPixelUrl = `${(apiBaseUrl || frontendBaseUrl).replace(/\/$/, '')}/api/exams/track-mail/${jobId}`;
 
   const htmlBody = generateExamEmailHtml({
     candidateName: c.snapshot_student_name,
@@ -272,88 +273,110 @@ async function trackEmailOpen(jobId) {
   }
 }
 
-/**
- * Worker tick: processes the next queued email job
- */
-async function processNextEmailJob() {
-  if (isWorkerRunning) return;
-  isWorkerRunning = true;
+// Pooled Nodemailer transporters map: `${smtpId}_${host}_${port}_${secure}` => Transporter
+const transporterPool = new Map();
 
-  try {
-    // 1. Fetch next queued or retryable job
-    const [jobs] = await db.query(`
-      SELECT ej.*, eo.encrypted_otp, eo.otp_iv, eo.otp_tag, eo.candidate_id as eo_cid
-      FROM email_jobs ej
-      LEFT JOIN exam_otps eo ON eo.candidate_id = ej.candidate_id
-      WHERE ej.status IN ('QUEUED', 'RETRY_PENDING')
-        AND ej.scheduled_for <= NOW()
-      ORDER BY ej.id ASC
-      LIMIT 1
-    `);
-
-    if (jobs.length === 0) {
-      isWorkerRunning = false;
-      return;
-    }
-
-    const job = jobs[0];
-
-    // Mark as PROCESSING
-    await db.query(`UPDATE email_jobs SET status = 'PROCESSING' WHERE id = ?`, [job.id]);
-
-    // 2. Select available healthy SMTP account with quota
-    const smtpAcc = await getNextAvailableSmtpAccount();
-
-    if (!smtpAcc) {
-      console.warn('[EMAIL WORKER] No available healthy SMTP accounts with remaining quota. Postponing job ID:', job.id);
-      await db.query(`
-        UPDATE email_jobs 
-        SET status = 'RETRY_PENDING', scheduled_for = DATE_ADD(NOW(), INTERVAL 5 MINUTE), last_error = 'All SMTP accounts exceeded quota or unhealthy'
-        WHERE id = ?
-      `, [job.id]);
-      isWorkerRunning = false;
-      return;
-    }
-
-    // 3. Prepare transporter with resilient timeouts and auto-fallback
-    const plainPassword = decrypt(smtpAcc.encrypted_password, smtpAcc.iv, smtpAcc.auth_tag).replace(/\s+/g, '');
-    const createTransporter = (host, port, secure) => nodemailer.createTransport({
+function getPooledTransporter(smtpAcc, plainPassword, host, port, secure) {
+  const poolKey = `${smtpAcc.id}_${host}_${port}_${secure}_${smtpAcc.username}`;
+  let transporter = transporterPool.get(poolKey);
+  if (!transporter) {
+    transporter = nodemailer.createTransport({
+      pool: true,
+      maxConnections: 3,
+      maxMessages: 100,
+      rateLimit: 14,
       host,
       port,
       secure,
+      family: 4, // Force IPv4 to avoid ENETUNREACH on hosting environments
       auth: {
         user: smtpAcc.username,
         pass: plainPassword
       },
       tls: { rejectUnauthorized: false },
-      connectionTimeout: 25000,
-      greetingTimeout: 25000,
-      socketTimeout: 25000
+      connectionTimeout: 15000,
+      greetingTimeout: 15000,
+      socketTimeout: 15000
     });
+    transporterPool.set(poolKey, transporter);
+  }
+  return transporter;
+}
 
-    const isPrimarySecure = smtpAcc.secure_type === 'SSL' || smtpAcc.port === 465;
-    let transporter = createTransporter(smtpAcc.host, smtpAcc.port, isPrimarySecure);
-
-    const startTime = Date.now();
-    let sendSuccess = false;
-    let responseMessage = '';
-    let errorMessage = '';
-
-    try {
-      // Re-hydrate OTP placeholder if needed
-      let finalHtml = job.body_html;
-      if (finalHtml.includes('[REVERT_OTP]')) {
-        let decOtp = '------';
-        if (job.encrypted_otp && job.otp_iv && job.otp_tag) {
-          try {
-            decOtp = decrypt(job.encrypted_otp, job.otp_iv, job.otp_tag);
-          } catch (e) {
-            console.warn('Failed decrypting OTP for queued job:', e.message);
-          }
-        }
-        finalHtml = finalHtml.replace(/\[REVERT_OTP\]/g, decOtp);
+function invalidateTransporterPool(accountId = null) {
+  if (accountId) {
+    for (const [key, tr] of transporterPool.entries()) {
+      if (key.startsWith(`${accountId}_`)) {
+        try { tr.close(); } catch (e) {}
+        transporterPool.delete(key);
       }
+    }
+  } else {
+    for (const [, tr] of transporterPool.entries()) {
+      try { tr.close(); } catch (e) {}
+    }
+    transporterPool.clear();
+  }
+}
 
+async function executeSingleJob(job) {
+  // 1. Select available healthy SMTP account with quota
+  const smtpAcc = await getNextAvailableSmtpAccount();
+
+  if (!smtpAcc) {
+    console.warn('[EMAIL WORKER] No available healthy SMTP accounts with remaining quota. Postponing job ID:', job.id);
+    await db.query(`
+      UPDATE email_jobs 
+      SET status = 'RETRY_PENDING', scheduled_for = DATE_ADD(NOW(), INTERVAL 5 MINUTE), last_error = 'All SMTP accounts exceeded quota or unhealthy'
+      WHERE id = ?
+    `, [job.id]);
+    return false;
+  }
+
+  // 2. Prepare transporter using connection pooling for 10x-20x throughput
+  const plainPassword = decrypt(smtpAcc.encrypted_password, smtpAcc.iv, smtpAcc.auth_tag).replace(/\s+/g, '');
+  const isPrimarySecure = smtpAcc.secure_type === 'SSL' || smtpAcc.port === 465;
+  let transporter = getPooledTransporter(smtpAcc, plainPassword, smtpAcc.host, smtpAcc.port, isPrimarySecure);
+
+  const startTime = Date.now();
+  let sendSuccess = false;
+  let responseMessage = '';
+  let errorMessage = '';
+
+  try {
+    // Re-hydrate OTP placeholder if needed
+    let finalHtml = job.body_html;
+    if (finalHtml.includes('[REVERT_OTP]')) {
+      let decOtp = '------';
+      if (job.encrypted_otp && job.otp_iv && job.otp_tag) {
+        try {
+          decOtp = decrypt(job.encrypted_otp, job.otp_iv, job.otp_tag);
+        } catch (e) {
+          console.warn('Failed decrypting OTP for queued job:', e.message);
+        }
+      }
+      finalHtml = finalHtml.replace(/\[REVERT_OTP\]/g, decOtp);
+    }
+
+    // A. If configured as an HTTPS email service (Resend, Brevo, SendGrid), send over HTTPS (port 443)
+    if (smtpAcc.secure_type === 'HTTPS' || isHttpEmailConfigured({ ...smtpAcc, plainPassword })) {
+      try {
+        const httpRes = await sendEmailViaHttp({
+          smtpAcc,
+          plainPassword,
+          toEmail: job.recipient_email,
+          toName: job.recipient_name,
+          subject: job.subject,
+          html: finalHtml
+        });
+        sendSuccess = true;
+        responseMessage = httpRes.response;
+      } catch (httpErr) {
+        sendSuccess = false;
+        errorMessage = httpErr.message;
+      }
+    } else {
+      // B. Standard pooled SMTP delivery with fallback port and Render HTTP API fallback
       try {
         const info = await transporter.sendMail({
           from: `"${smtpAcc.display_name}" <${smtpAcc.sender_email}>`,
@@ -366,13 +389,13 @@ async function processNextEmailJob() {
         responseMessage = info.response || 'Message delivered successfully';
       } catch (primarySendErr) {
         // If connection timed out or socket error, attempt alternate port fallback
-        const isNetworkOrTimeout = /timeout|ECONNREFUSED|ENOTFOUND|ETIMEDOUT/i.test(primarySendErr.message);
+        const isNetworkOrTimeout = /timeout|ECONNREFUSED|ENOTFOUND|ETIMEDOUT|ENETUNREACH/i.test(primarySendErr.message);
         if (isNetworkOrTimeout && (smtpAcc.port === 465 || smtpAcc.port === 587)) {
           const altPort = smtpAcc.port === 465 ? 587 : 465;
           const altSecure = altPort === 465;
-          console.warn(`[EMAIL WORKER] Primary port ${smtpAcc.port} timed out for job #${job.id}. Retrying on fallback port ${altPort}...`);
+          console.warn(`[EMAIL WORKER] Primary port ${smtpAcc.port} failed for job #${job.id}. Retrying on fallback port ${altPort}...`);
           try {
-            const altTransporter = createTransporter(smtpAcc.host, altPort, altSecure);
+            const altTransporter = getPooledTransporter(smtpAcc, plainPassword, smtpAcc.host, altPort, altSecure);
             const info = await altTransporter.sendMail({
               from: `"${smtpAcc.display_name}" <${smtpAcc.sender_email}>`,
               to: `"${job.recipient_name}" <${job.recipient_email}>`,
@@ -382,75 +405,143 @@ async function processNextEmailJob() {
             sendSuccess = true;
             responseMessage = (info.response || 'Delivered') + ` (via fallback port ${altPort})`;
 
-            // Save the working port so next emails don't hit the timeout
+            // Save working port so next emails don't hit the timeout
             await db.query(`UPDATE smtp_accounts SET port = ?, secure_type = ? WHERE id = ?`, [altPort, altSecure ? 'SSL' : 'STARTTLS', smtpAcc.id]);
           } catch (altErr) {
-            sendSuccess = false;
-            errorMessage = altErr.message;
+            // Check if HTTP email API fallback is available in environment
+            if (process.env.RESEND_API_KEY || process.env.BREVO_API_KEY || process.env.SENDGRID_API_KEY) {
+              console.log(`[EMAIL WORKER] SMTP ports blocked on hosting network (Render). Auto-switching to HTTPS API fallback for job #${job.id}...`);
+              try {
+                const httpRes = await sendEmailViaHttp({
+                  smtpAcc,
+                  plainPassword,
+                  toEmail: job.recipient_email,
+                  toName: job.recipient_name,
+                  subject: job.subject,
+                  html: finalHtml
+                });
+                sendSuccess = true;
+                responseMessage = httpRes.response + ' (Auto-switched to HTTPS on Render)';
+              } catch (httpFallbackErr) {
+                sendSuccess = false;
+                errorMessage = `SMTP timeout (${altErr.message}) & HTTPS fallback failed: ${httpFallbackErr.message}`;
+              }
+            } else {
+              sendSuccess = false;
+              errorMessage = altErr.message;
+            }
           }
         } else {
           sendSuccess = false;
           errorMessage = primarySendErr.message;
         }
       }
-    } catch (sendErr) {
-      sendSuccess = false;
-      errorMessage = sendErr.message;
     }
+  } catch (sendErr) {
+    sendSuccess = false;
+    errorMessage = sendErr.message;
+  }
 
-    const latencyMs = Date.now() - startTime;
+  const latencyMs = Date.now() - startTime;
 
-    // 4. Update status and quotas
-    if (sendSuccess) {
-      await db.query(`
-        UPDATE email_jobs 
-        SET status = 'SENT', smtp_account_id = ?, sent_at = NOW(), last_error = NULL
-        WHERE id = ?
-      `, [smtpAcc.id, job.id]);
+  // 3. Update status and quotas
+  if (sendSuccess) {
+    await db.query(`
+      UPDATE email_jobs 
+      SET status = 'SENT', smtp_account_id = ?, sent_at = NOW(), last_error = NULL
+      WHERE id = ?
+    `, [smtpAcc.id, job.id]);
 
-      await db.query(`
-        UPDATE smtp_accounts 
-        SET sent_today = sent_today + 1, consecutive_failures = 0
-        WHERE id = ?
-      `, [smtpAcc.id]);
+    await db.query(`
+      UPDATE smtp_accounts 
+      SET sent_today = sent_today + 1, consecutive_failures = 0
+      WHERE id = ?
+    `, [smtpAcc.id]);
 
-      await db.query(`
-        INSERT INTO email_delivery_logs 
-          (job_id, smtp_account_id, attempt_number, status, response_message, latency_ms)
-        VALUES (?, ?, ?, 'SUCCESS', ?, ?)
-      `, [job.id, smtpAcc.id, job.attempt_count + 1, responseMessage, latencyMs]);
+    await db.query(`
+      INSERT INTO email_delivery_logs 
+        (job_id, smtp_account_id, attempt_number, status, response_message, latency_ms)
+      VALUES (?, ?, ?, 'SUCCESS', ?, ?)
+    `, [job.id, smtpAcc.id, job.attempt_count + 1, responseMessage, latencyMs]);
 
-      console.log(`[EMAIL WORKER] Job #${job.id} sent to ${job.recipient_email} via ${smtpAcc.sender_email}`);
-    } else {
-      const nextAttempt = job.attempt_count + 1;
-      const isFinalFail = nextAttempt >= job.max_attempts;
-      const newStatus = isFinalFail ? 'FAILED' : 'RETRY_PENDING';
-      const retryDelayMinutes = nextAttempt * 2; // Exponential backoff: 2m, 4m, etc.
+    console.log(`[EMAIL WORKER] Job #${job.id} sent to ${job.recipient_email} via ${smtpAcc.sender_email} (${latencyMs}ms)`);
+  } else {
+    const nextAttempt = job.attempt_count + 1;
+    const isFinalFail = nextAttempt >= job.max_attempts;
+    const newStatus = isFinalFail ? 'FAILED' : 'RETRY_PENDING';
+    const retryDelayMinutes = nextAttempt * 2; // Exponential backoff: 2m, 4m, etc.
 
-      await db.query(`
-        UPDATE email_jobs 
-        SET status = ?, 
-            attempt_count = ?, 
-            last_error = ?,
-            scheduled_for = DATE_ADD(NOW(), INTERVAL ? MINUTE)
-        WHERE id = ?
-      `, [newStatus, nextAttempt, errorMessage, retryDelayMinutes, job.id]);
+    await db.query(`
+      UPDATE email_jobs 
+      SET status = ?, 
+          attempt_count = ?, 
+          last_error = ?,
+          scheduled_for = DATE_ADD(NOW(), INTERVAL ? MINUTE)
+      WHERE id = ?
+    `, [newStatus, nextAttempt, errorMessage, retryDelayMinutes, job.id]);
 
-      await db.query(`
-        UPDATE smtp_accounts 
-        SET consecutive_failures = consecutive_failures + 1,
-            is_healthy = CASE WHEN consecutive_failures >= 3 THEN 0 ELSE is_healthy END,
-            last_error_message = ?
-        WHERE id = ?
-      `, [errorMessage, smtpAcc.id]);
+    await db.query(`
+      UPDATE smtp_accounts 
+      SET consecutive_failures = consecutive_failures + 1,
+          is_healthy = CASE WHEN consecutive_failures >= 3 THEN 0 ELSE is_healthy END,
+          last_error_message = ?
+      WHERE id = ?
+    `, [errorMessage, smtpAcc.id]);
 
-      await db.query(`
-        INSERT INTO email_delivery_logs 
-          (job_id, smtp_account_id, attempt_number, status, response_message, latency_ms)
-        VALUES (?, ?, ?, 'FAILED', ?, ?)
-      `, [job.id, smtpAcc.id, nextAttempt, errorMessage, latencyMs]);
+    await db.query(`
+      INSERT INTO email_delivery_logs 
+        (job_id, smtp_account_id, attempt_number, status, response_message, latency_ms)
+      VALUES (?, ?, ?, 'FAILED', ?, ?)
+    `, [job.id, smtpAcc.id, nextAttempt, errorMessage, latencyMs]);
 
-      console.error(`[EMAIL WORKER] Job #${job.id} failed on attempt ${nextAttempt}: ${errorMessage}`);
+    console.error(`[EMAIL WORKER] Job #${job.id} failed on attempt ${nextAttempt}: ${errorMessage}`);
+  }
+
+  return sendSuccess;
+}
+
+/**
+ * Process a concurrent batch of email jobs for maximum efficiency
+ */
+async function processEmailBatch(batchSize = 3) {
+  // 1. Fetch next batch of queued or retryable jobs
+  const [jobs] = await db.query(`
+    SELECT ej.*, eo.encrypted_otp, eo.otp_iv, eo.otp_tag, eo.candidate_id as eo_cid
+    FROM email_jobs ej
+    LEFT JOIN exam_otps eo ON eo.candidate_id = ej.candidate_id
+    WHERE ej.status IN ('QUEUED', 'RETRY_PENDING')
+      AND ej.scheduled_for <= NOW()
+    ORDER BY ej.id ASC
+    LIMIT ?
+  `, [batchSize]);
+
+  if (jobs.length === 0) {
+    return 0;
+  }
+
+  // Atomically mark batch as PROCESSING to prevent duplicate pickup
+  const jobIds = jobs.map(j => j.id);
+  await db.query(`UPDATE email_jobs SET status = 'PROCESSING' WHERE id IN (?)`, [jobIds]);
+
+  // Execute in parallel
+  await Promise.allSettled(jobs.map(job => executeSingleJob(job)));
+
+  return jobs.length;
+}
+
+/**
+ * Worker tick: continuously processes queued email jobs until queue is empty
+ */
+async function processNextEmailJob() {
+  if (isWorkerRunning) return;
+  isWorkerRunning = true;
+
+  try {
+    while (true) {
+      const processedCount = await processEmailBatch(3);
+      if (processedCount === 0) break;
+      // Brief 50ms pause between batches
+      await new Promise(r => setTimeout(r, 50));
     }
   } catch (err) {
     console.error('[EMAIL WORKER ERROR]', err.message);
@@ -462,10 +553,10 @@ async function processNextEmailJob() {
 /**
  * Start background queue poller
  */
-function startEmailWorker(intervalMs = 4000) {
+function startEmailWorker(intervalMs = 3000) {
   if (workerIntervalHandle) clearInterval(workerIntervalHandle);
   workerIntervalHandle = setInterval(processNextEmailJob, intervalMs);
-  console.log(`[EMAIL WORKER] Background delivery worker started (interval: ${intervalMs}ms).`);
+  console.log(`[EMAIL WORKER] High-efficiency pooled email worker started (interval: ${intervalMs}ms).`);
 }
 
 /**
@@ -504,7 +595,20 @@ async function getEmailQueueStatus({ status = null, assignmentId = null, limit =
     GROUP BY status
   `);
 
-  return { jobs: rows, stats: counts };
+  const statsObj = {
+    QUEUED: 0,
+    PROCESSING: 0,
+    SENT: 0,
+    DELIVERED: 0,
+    OPENED: 0,
+    FAILED: 0,
+    RETRY_PENDING: 0
+  };
+  for (const r of counts) {
+    statsObj[r.status] = parseInt(r.count, 10);
+  }
+
+  return { jobs: rows, recentJobs: rows, stats: statsObj };
 }
 
 /**
@@ -541,5 +645,6 @@ module.exports = {
   processNextEmailJob,
   startEmailWorker,
   getEmailQueueStatus,
-  retryFailedJobs
+  retryFailedJobs,
+  invalidateTransporterPool
 };

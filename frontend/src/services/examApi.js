@@ -77,7 +77,18 @@ export const examApi = {
       const res = await request(`/papers/${id}`);
       return res.data || res;
     },
+    update: (id, data) => request(`/papers/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data)
+    }),
+    delete: (id) => request(`/papers/${id}`, {
+      method: 'DELETE'
+    }),
     getVersion: async (versionId) => {
+      if (!versionId || versionId === 'undefined') {
+        console.warn('api.papers.getVersion skipped due to missing/undefined versionId:', versionId);
+        return null;
+      }
       const res = await request(`/papers/versions/${versionId}`);
       return res.data || res;
     },
@@ -85,13 +96,19 @@ export const examApi = {
       method: 'POST',
       body: JSON.stringify(data)
     }),
-    publishVersion: (versionId) => request(`/papers/versions/${versionId}/publish`, {
-      method: 'POST'
-    }),
-    getPreviewUrl: (versionId) => `${EXAM_API_BASE}/papers/versions/${versionId}/preview`,
-    getAnswerKeyUrl: (versionId) => `${EXAM_API_BASE}/papers/versions/${versionId}/answer-key-html`,
-    getPdfDownloadUrl: (versionId) => `${EXAM_API_BASE}/papers/versions/${versionId}/download-pdf`,
-    getDocxDownloadUrl: (versionId) => `${EXAM_API_BASE}/papers/versions/${versionId}/download-docx`
+    publishVersion: (versionId) => {
+      if (!versionId || versionId === 'undefined') {
+        console.warn('api.papers.publishVersion skipped due to missing/undefined versionId:', versionId);
+        return Promise.resolve({ success: false });
+      }
+      return request(`/papers/versions/${versionId}/publish`, {
+        method: 'POST'
+      });
+    },
+    getPreviewUrl: (versionId) => versionId && versionId !== 'undefined' ? `${EXAM_API_BASE}/papers/versions/${versionId}/preview` : '#',
+    getAnswerKeyUrl: (versionId) => versionId && versionId !== 'undefined' ? `${EXAM_API_BASE}/papers/versions/${versionId}/answer-key-html` : '#',
+    getPdfDownloadUrl: (versionId) => versionId && versionId !== 'undefined' ? `${EXAM_API_BASE}/papers/versions/${versionId}/download-pdf` : '#',
+    getDocxDownloadUrl: (versionId) => versionId && versionId !== 'undefined' ? `${EXAM_API_BASE}/papers/versions/${versionId}/download-docx` : '#'
   },
 
   // 3. Question Bank
@@ -183,17 +200,44 @@ export const examApi = {
     })
   },
 
+  // 6b. AI Assistant Model & Key Configuration
+  aiConfig: {
+    list: async () => {
+      const res = await request('/ai-config');
+      return Array.isArray(res) ? res : (res.data || []);
+    },
+    create: (data) => request('/ai-config', {
+      method: 'POST',
+      body: JSON.stringify(data)
+    }),
+    update: (id, data) => request(`/ai-config/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data)
+    }),
+    setDefault: (id) => request(`/ai-config/${id}/set-default`, {
+      method: 'POST'
+    }),
+    delete: (id) => request(`/ai-config/${id}`, {
+      method: 'DELETE'
+    }),
+    testConnection: (id) => request(`/ai-config/${id}/test`, {
+      method: 'POST'
+    })
+  },
+
   // 7. Email Queue
   emailQueue: {
     getStatus: async () => {
       const res = await request('/email-queue');
       return res.data || res || {};
     },
-    sendExamEmails: (assignmentId) => request(`/email-queue/send-exam/${assignmentId}`, {
-      method: 'POST'
+    sendExamEmails: (assignmentId, baseUrl) => request(`/email-queue/send-exam/${assignmentId}`, {
+      method: 'POST',
+      body: JSON.stringify({ baseUrl: baseUrl || (typeof window !== 'undefined' ? window.location.origin : '') })
     }),
-    sendCandidateEmail: (candidateId) => request(`/email-queue/send-candidate/${candidateId}`, {
-      method: 'POST'
+    sendCandidateEmail: (candidateId, baseUrl) => request(`/email-queue/send-candidate/${candidateId}`, {
+      method: 'POST',
+      body: JSON.stringify({ baseUrl: baseUrl || (typeof window !== 'undefined' ? window.location.origin : '') })
     }),
     retryFailed: () => request('/email-queue/retry', {
       method: 'POST'
@@ -218,6 +262,22 @@ export const examApi = {
     submitExam: (sessionToken) => request('/student-exam/submit', {
       method: 'POST',
       body: JSON.stringify({ sessionToken })
+    }),
+    search: (sessionToken, query, questionId = null) => request('/student-exam/search', {
+      method: 'POST',
+      body: JSON.stringify({ sessionToken, query, questionId })
+    }),
+    readPage: (sessionToken, url) => request('/student-exam/search/read', {
+      method: 'POST',
+      body: JSON.stringify({ sessionToken, url })
+    }),
+    askAi: (sessionToken, prompt, questionContext = '', codeContext = '', questionId = null) => request('/student-exam/ai-assist', {
+      method: 'POST',
+      body: JSON.stringify({ sessionToken, prompt, questionContext, codeContext, questionId })
+    }),
+    getAiStatus: (sessionToken) => request('/student-exam/ai-status', {
+      method: 'GET',
+      headers: { 'x-exam-session-token': sessionToken }
     })
   },
 

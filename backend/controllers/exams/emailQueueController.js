@@ -13,8 +13,9 @@ async function getEmailQueueStatus(req, res) {
 async function queueExamEmails(req, res) {
   try {
     const { assignmentId } = req.params;
-    const baseUrl = req.body.baseUrl || `${req.protocol}://${req.get('host')}`;
-    const result = await emailQueueWorker.queueExamEmails(assignmentId, baseUrl, req.user.id);
+    const frontendBaseUrl = (req.body.baseUrl || req.headers.origin || process.env.FRONTEND_URL || 'https://project-lms-six.vercel.app').replace(/\/$/, '');
+    const apiBaseUrl = `${req.protocol}://${req.get('host')}`;
+    const result = await emailQueueWorker.queueExamEmails(assignmentId, frontendBaseUrl, apiBaseUrl, req.user.id);
     res.json({ success: true, ...result });
   } catch (err) {
     res.status(400).json({ success: false, message: err.message });
@@ -34,8 +35,9 @@ async function retryFailedJobs(req, res) {
 async function queueCandidateEmail(req, res) {
   try {
     const { candidateId } = req.params;
-    const baseUrl = req.body.baseUrl || `${req.protocol}://${req.get('host')}`;
-    const result = await emailQueueWorker.queueCandidateEmail(candidateId, baseUrl, req.user?.id);
+    const frontendBaseUrl = (req.body.baseUrl || req.headers.origin || process.env.FRONTEND_URL || 'https://project-lms-six.vercel.app').replace(/\/$/, '');
+    const apiBaseUrl = `${req.protocol}://${req.get('host')}`;
+    const result = await emailQueueWorker.queueCandidateEmail(candidateId, frontendBaseUrl, apiBaseUrl, req.user?.id);
     res.json({ success: true, ...result });
   } catch (err) {
     res.status(400).json({ success: false, message: err.message });

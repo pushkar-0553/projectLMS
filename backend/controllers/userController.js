@@ -116,12 +116,50 @@ const userController = {
   // Update user profile
   async updateProfile(req, res) {
     try {
-      const { name, mobile, batch } = req.body
-      await User.update(req.user.id, { name, mobile, batch })
-      res.json({ message: 'Profile updated successfully' })
+      const targetUserId = (req.body.userId && ['admin', 'super_admin'].includes(req.user.role))
+        ? parseInt(req.body.userId, 10)
+        : req.user.id;
+
+      const {
+        name, email, mobile, phone, batch, domain,
+        college, passout_year, current_location, skills, github, linkedin
+      } = req.body;
+
+      if (email) {
+        const trimmedEmail = email.trim().toLowerCase();
+        const [existing] = await pool.execute(
+          'SELECT id FROM Users WHERE email = ? AND id != ?',
+          [trimmedEmail, targetUserId]
+        );
+        if (existing.length > 0) {
+          return res.status(400).json({ message: 'Email address is already in use by another account' });
+        }
+      }
+
+      await User.update(targetUserId, {
+        name: name !== undefined ? name.trim() : undefined,
+        email: email !== undefined ? email.trim().toLowerCase() : undefined,
+        mobile: mobile !== undefined ? mobile.trim() : undefined,
+        phone: phone !== undefined ? phone.trim() : undefined,
+        batch: batch !== undefined ? batch : undefined,
+        domain: domain !== undefined ? domain.trim() : undefined,
+        college: college !== undefined ? college.trim() : undefined,
+        passout_year: passout_year !== undefined ? (passout_year ? parseInt(passout_year, 10) : null) : undefined,
+        current_location: current_location !== undefined ? current_location.trim() : undefined,
+        skills: skills !== undefined ? skills.trim() : undefined,
+        github: github !== undefined ? github.trim() : undefined,
+        linkedin: linkedin !== undefined ? linkedin.trim() : undefined
+      });
+
+      const updatedUser = await User.findById(targetUserId);
+
+      res.json({
+        message: 'Profile updated successfully',
+        user: updatedUser
+      });
     } catch (error) {
-      console.error('Update profile error:', error)
-      res.status(500).json({ message: 'Server error' })
+      console.error('Update profile error:', error);
+      res.status(500).json({ message: 'Server error: ' + error.message });
     }
   },
 
@@ -425,8 +463,26 @@ const userController = {
 
       // Basic student info
       const student = await User.findById(id);
-      if (!student || student.role !== 'student') {
-        return res.status(404).json({ message: 'Student not found' });
+      if (!student) {
+        return res.status(404).json({ message: 'User not found' });
+      }
+
+      // If user is not student (e.g. coordinator or admin viewing their own profile)
+      if (student.role !== 'student') {
+        const [courseRows] = await pool.execute(
+          `SELECT c.id, c.name, c.code, c.slug, cm.role, cm.status, cm.enrolled_at
+           FROM Courses c
+           JOIN CourseMemberships cm ON c.id = cm.course_id
+           WHERE cm.user_id = ? AND cm.status = 'active'`,
+          [id]
+        );
+        return res.json({
+          student: { ...student, courses: courseRows },
+          currentBatch: null,
+          progress: [],
+          progressStats: { approved: 0, pending: 0, rejected: 0, total: 0 },
+          attendance: { percentage: 100, present: 0, total: 0 }
+        });
       }
 
       // Enrolled courses

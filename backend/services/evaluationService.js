@@ -31,11 +31,20 @@ async function getCandidateSubmissionForEvaluation(candidateId) {
   const candidate = candidates[0];
 
   // 2. Fetch paper version details (including answer keys and explanations for evaluator)
-  const paper = await getVersionDetails(candidate.paper_version_id);
+  let paper = await getVersionDetails(candidate.paper_version_id);
+  if (!paper && candidate.paper_version_id) {
+    const [latestVersionRow] = await db.query(
+      `SELECT id FROM exam_paper_versions WHERE paper_id = ? ORDER BY version_number DESC LIMIT 1`,
+      [candidate.paper_version_id]
+    );
+    if (latestVersionRow.length > 0) {
+      paper = await getVersionDetails(latestVersionRow[0].id);
+    }
+  }
 
   // 3. Fetch student's submitted answers
   const [answers] = await db.query(`
-    SELECT question_id, answer_text, selected_option, client_updated_at, server_synced_at
+    SELECT question_id, answer_text, selected_option, code_language, code_content, client_updated_at, server_synced_at
     FROM exam_answers
     WHERE session_id = ?
   `, [candidate.session_id]);
@@ -79,7 +88,9 @@ async function getCandidateSubmissionForEvaluation(candidateId) {
         answerKey: q.answer_key,
         explanation: q.explanation,
         options: q.options,
-        studentAnswer: ans ? (ans.answer_text || ans.selected_option) : null,
+        studentAnswer: ans ? (ans.answer_text || ans.code_content || ans.selected_option) : null,
+        codeContent: ans ? ans.code_content : null,
+        codeLanguage: ans ? ans.code_language : null,
         studentAnswerRaw: ans,
         evaluation: evaluation ? {
           marksAwarded: evaluation.marks_awarded,

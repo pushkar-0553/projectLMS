@@ -2,6 +2,7 @@ const nodemailer = require('nodemailer');
 const db = require('../config/db');
 const { encrypt, decrypt } = require('../config/crypto');
 const { logAudit } = require('./auditService');
+const { isHttpEmailConfigured, testHttpConnection } = require('./httpEmailSender');
 
 /**
  * List all SMTP accounts (passwords sanitized/masked)
@@ -46,8 +47,16 @@ async function createSmtpAccount(data, userId) {
   let port = data.port ? parseInt(data.port, 10) : null;
   let secureType = data.secureType;
 
-  // Auto-detect SMTP settings from email domain if not manually given
-  if (!host) {
+  // Auto-detect HTTPS email provider or standard SMTP settings
+  if (password.startsWith('re_') || (data.host || '').includes('resend')) {
+    host = 'api.resend.com';
+    port = 443;
+    secureType = 'HTTPS';
+  } else if (password.startsWith('xkeysib-') || (data.host || '').includes('brevo')) {
+    host = 'api.brevo.com';
+    port = 443;
+    secureType = 'HTTPS';
+  } else if (!host) {
     const domain = (senderEmail.split('@')[1] || '').toLowerCase();
     if (domain === 'gmail.com' || domain === 'googlemail.com') {
       host = 'smtp.gmail.com';
@@ -84,14 +93,14 @@ async function createSmtpAccount(data, userId) {
     action: 'SMTP_ACCOUNT_CREATED',
     entityType: 'SMTP_ACCOUNT',
     entityId: result.insertId,
-    payload: { senderEmail, host, dailyQuota }
+    payload: { senderEmail, host, dailyQuota, secureType }
   });
 
   return { id: result.insertId };
 }
 
 /**
- * Test SMTP account connection with generous timeout and automatic alternate port fallback
+ * Test SMTP account connection with generous timeout and automatic alternate port & HTTPS fallback
  */
 async function testSmtpConnection(accountId) {
   const [accounts] = await db.query(`SELECT * FROM smtp_accounts WHERE id = ?`, [accountId]);
@@ -100,10 +109,32 @@ async function testSmtpConnection(accountId) {
   const acc = accounts[0];
   const plainPassword = decrypt(acc.encrypted_password, acc.iv, acc.auth_tag).replace(/\s+/g, '');
 
+  // 1. If configured as an HTTPS email service (Resend, Brevo, SendGrid), verify over HTTPS (port 443)
+  if (acc.secure_type === 'HTTPS' || isHttpEmailConfigured({ ...acc, plainPassword })) {
+    try {
+      const httpResult = await testHttpConnection({ smtpAcc: acc, plainPassword });
+      await db.query(`
+        UPDATE smtp_accounts 
+        SET is_healthy = 1, consecutive_failures = 0, last_tested_at = NOW(), last_error_message = NULL
+        WHERE id = ?
+      `, [accountId]);
+      return { success: true, message: httpResult.message };
+    } catch (httpErr) {
+      await db.query(`
+        UPDATE smtp_accounts 
+        SET is_healthy = 0, consecutive_failures = consecutive_failures + 1, last_tested_at = NOW(), last_error_message = ?
+        WHERE id = ?
+      `, [httpErr.message, accountId]);
+      return { success: false, message: `HTTPS Email Verification failed: ${httpErr.message}` };
+    }
+  }
+
+  // 2. Standard SMTP verification
   const createTransporter = (host, port, secure) => nodemailer.createTransport({
     host,
     port,
     secure,
+    family: 4, // Force IPv4 to prevent ENETUNREACH errors on cloud/Render hosts
     auth: {
       user: acc.username,
       pass: plainPassword
@@ -111,9 +142,9 @@ async function testSmtpConnection(accountId) {
     tls: {
       rejectUnauthorized: false
     },
-    connectionTimeout: 25000,
-    greetingTimeout: 25000,
-    socketTimeout: 25000
+    connectionTimeout: 15000,
+    greetingTimeout: 15000,
+    socketTimeout: 15000
   });
 
   const isPrimarySecure = acc.secure_type === 'SSL' || acc.port === 465;
@@ -149,12 +180,18 @@ async function testSmtpConnection(accountId) {
         message: `SMTP connection verified on fallback port ${altPort} (automatically updated setting to port ${altPort})!`
       };
     } catch (altErr) {
+      // Diagnostic check for Render port blocking
+      const isTimeout = /timeout|ETIMEDOUT|ECONNREFUSED|ENETUNREACH/i.test(err.message);
+      const friendlyMsg = isTimeout 
+        ? `Connection timed out (${err.message}). Note: Cloud platforms like Render block outbound SMTP ports (25, 465, 587). To ensure emails send reliably on Render, enter a Resend or Brevo API key, which operates over HTTPS port 443.`
+        : `SMTP verification failed: ${err.message}`;
+
       await db.query(`
         UPDATE smtp_accounts 
         SET is_healthy = 0, consecutive_failures = consecutive_failures + 1, last_tested_at = NOW(), last_error_message = ?
         WHERE id = ?
-      `, [err.message, accountId]);
-      return { success: false, message: `SMTP verification failed: ${err.message}` };
+      `, [friendlyMsg, accountId]);
+      return { success: false, message: friendlyMsg };
     }
   }
 }
@@ -240,6 +277,11 @@ async function updateSmtpAccount(accountId, data, userId) {
     payload: { senderEmail, host, port, dailyQuota, passwordUpdated: !!rawPassword }
   });
 
+  try {
+    const { invalidateTransporterPool } = require('./emailQueueWorker');
+    if (typeof invalidateTransporterPool === 'function') invalidateTransporterPool(accountId);
+  } catch (e) {}
+
   return { success: true, message: 'SMTP account updated successfully.' };
 }
 
@@ -266,6 +308,11 @@ async function deleteSmtpAccount(accountId, userId) {
     entityId: accountId,
     payload: { senderEmail: existing[0].sender_email }
   });
+
+  try {
+    const { invalidateTransporterPool } = require('./emailQueueWorker');
+    if (typeof invalidateTransporterPool === 'function') invalidateTransporterPool(accountId);
+  } catch (e) {}
 
   return { success: true, message: 'SMTP account deleted successfully.' };
 }

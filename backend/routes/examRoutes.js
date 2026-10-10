@@ -10,6 +10,7 @@ const stageDbController = require('../controllers/exams/stageDbController');
 const assignmentController = require('../controllers/exams/assignmentController');
 const smtpController = require('../controllers/exams/smtpController');
 const emailQueueController = require('../controllers/exams/emailQueueController');
+const aiConfigController = require('../controllers/exams/aiConfigController');
 const studentExamController = require('../controllers/exams/studentExamController');
 const evaluationController = require('../controllers/exams/evaluationController');
 const reportController = require('../controllers/exams/reportController');
@@ -21,6 +22,8 @@ const { decrypt } = require('../config/crypto');
 router.get('/papers', protect, isCoordinatorOrAdmin, paperController.listPapers);
 router.post('/papers', protect, isCoordinatorOrAdmin, paperController.createPaper);
 router.get('/papers/:id', protect, isCoordinatorOrAdmin, paperController.getPaperById);
+router.put('/papers/:id', protect, isCoordinatorOrAdmin, paperController.updatePaper);
+router.delete('/papers/:id', protect, isCoordinatorOrAdmin, paperController.deletePaper);
 router.get('/papers/versions/:versionId', protect, isCoordinatorOrAdmin, paperController.getVersionDetails);
 router.post('/papers/:id/version', protect, isCoordinatorOrAdmin, paperController.createNewVersion);
 router.post('/papers/versions/:versionId/publish', protect, isCoordinatorOrAdmin, paperController.publishVersion);
@@ -54,6 +57,15 @@ router.patch('/smtp/:id', protect, isCoordinatorOrAdmin, smtpController.updateSm
 router.put('/smtp/:id', protect, isCoordinatorOrAdmin, smtpController.updateSmtpAccount);
 router.delete('/smtp/:id', protect, isCoordinatorOrAdmin, smtpController.deleteSmtpAccount);
 
+// 5b. AI Model & API Key Configuration Routes
+router.get('/ai-config', protect, isCoordinatorOrAdmin, aiConfigController.listAiConfigs);
+router.post('/ai-config', protect, isCoordinatorOrAdmin, aiConfigController.createAiConfig);
+router.post('/ai-config/:id/test', protect, isCoordinatorOrAdmin, aiConfigController.testAiConfig);
+router.post('/ai-config/:id/set-default', protect, isCoordinatorOrAdmin, aiConfigController.setDefaultAiConfig);
+router.patch('/ai-config/:id', protect, isCoordinatorOrAdmin, aiConfigController.updateAiConfig);
+router.put('/ai-config/:id', protect, isCoordinatorOrAdmin, aiConfigController.updateAiConfig);
+router.delete('/ai-config/:id', protect, isCoordinatorOrAdmin, aiConfigController.deleteAiConfig);
+
 // 6. Email Queue Routes
 router.get('/email-queue', protect, isCoordinatorOrAdmin, emailQueueController.getEmailQueueStatus);
 router.post('/email-queue/send-exam/:assignmentId', protect, isCoordinatorOrAdmin, emailQueueController.queueExamEmails);
@@ -61,11 +73,44 @@ router.post('/email-queue/send-candidate/:candidateId', protect, isCoordinatorOr
 router.post('/email-queue/retry', protect, isCoordinatorOrAdmin, emailQueueController.retryFailedJobs);
 router.get('/track-mail/:jobId', emailQueueController.trackEmailOpen);
 
+const rateLimit = require('express-rate-limit');
+
+// Rate limiter for OTP passcode verification (defends against brute-force attacks)
+const otpVerificationLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes window
+  max: 15, // max 15 attempts per IP
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, message: 'Too many assessment passcode verification attempts. Please wait 15 minutes before trying again.' }
+});
+
+// Rate limiter for AI conceptual assistance requests
+const aiQueryLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, message: 'AI assistance rate limit exceeded. Please wait a moment.' }
+});
+
+// Rate limiter for web searches
+const searchRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, message: 'Web search rate limit exceeded. Please wait a moment.' }
+});
+
 // 7. Public Student Exam Routes (Passcode/Session Secured)
-router.post('/student-exam/verify-otp', studentExamController.verifyOtp);
+router.post('/student-exam/verify-otp', otpVerificationLimiter, studentExamController.verifyOtp);
 router.post('/student-exam/sync-answers', studentExamController.syncAnswers);
 router.post('/student-exam/violation', studentExamController.reportViolation);
 router.post('/student-exam/submit', studentExamController.submitExam);
+router.post('/student-exam/search', searchRateLimiter, studentExamController.searchWeb);
+router.post('/student-exam/search/read', searchRateLimiter, studentExamController.readWebPage);
+router.post('/student-exam/ai-assist', aiQueryLimiter, studentExamController.askAi);
+router.get('/student-exam/ai-status', studentExamController.getAiStatus);
 
 // 8. Evaluation Routes
 router.get('/evaluation/candidates/:candidateId', protect, isCoordinatorOrAdmin, evaluationController.getCandidateSubmission);

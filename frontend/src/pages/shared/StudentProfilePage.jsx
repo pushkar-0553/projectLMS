@@ -80,9 +80,11 @@ const StatPill = ({ icon: Icon, label, value, accent }) => (
 export default function StudentProfilePage() {
   const { studentId: paramId } = useParams()
   const navigate = useNavigate()
-  const { user } = useAuth()
+  const { user, updateUser } = useAuth()
   const studentId = paramId || user?.id
   const isStaff = ['admin', 'super_admin', 'coordinator', 'faculty'].includes(user?.role)
+  const isViewingSelf = !paramId || String(user?.id) === String(studentId)
+  const canEditProfile = isViewingSelf || ['admin', 'super_admin'].includes(user?.role)
 
   const [profile, setProfile]         = useState(null)
   const [batches, setBatches]         = useState([])
@@ -92,6 +94,24 @@ export default function StudentProfilePage() {
   const [selectedBatchId, setSelectedBatchId] = useState('')
   const [savingBatch, setSavingBatch] = useState(false)
   const [activeTab, setActiveTab]     = useState('submissions')
+
+  // Edit Profile Modal states (student & coordinator)
+  const [showEditProfileModal, setShowEditProfileModal] = useState(false)
+  const [profileForm, setProfileForm] = useState({
+    name: '',
+    email: '',
+    mobile: '',
+    college: '',
+    passout_year: '',
+    domain: '',
+    current_location: '',
+    skills: '',
+    github: '',
+    linkedin: ''
+  })
+  const [savingProfile, setSavingProfile] = useState(false)
+  const [profileSaveError, setProfileSaveError] = useState('')
+  const [profileSaveSuccess, setProfileSaveSuccess] = useState('')
 
   // Placement Hub states
   const [editingPlacement, setEditingPlacement] = useState(false)
@@ -115,13 +135,15 @@ export default function StudentProfilePage() {
   const { courseSlug } = useCourse()
   const prefix = courseSlug ? `/${courseSlug}` : ''
 
-  const backPath = (user?.role === 'admin' || user?.role === 'super_admin')
-    ? `${prefix}/admin/students`
-    : user?.role === 'faculty'
-      ? `${prefix}/faculty/student-monitoring`
-      : user?.role === 'coordinator'
-        ? `${prefix}/coordinator`
-        : `${prefix}/dashboard`
+  const backPath = isViewingSelf
+    ? `${prefix}/dashboard`
+    : (user?.role === 'admin' || user?.role === 'super_admin')
+      ? `${prefix}/admin/students`
+      : user?.role === 'faculty'
+        ? `${prefix}/faculty/student-monitoring`
+        : user?.role === 'coordinator'
+          ? `${prefix}/coordinator`
+          : `${prefix}/dashboard`
 
   useEffect(() => {
     loadProfile()
@@ -158,6 +180,50 @@ export default function StudentProfilePage() {
       setError('Failed to load student profile.')
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleSaveProfile = async (e) => {
+    e.preventDefault()
+    setSavingProfile(true)
+    setProfileSaveError('')
+    setProfileSaveSuccess('')
+    try {
+      const payload = {
+        name: profileForm.name.trim(),
+        email: profileForm.email.trim(),
+        mobile: profileForm.mobile.trim(),
+        phone: profileForm.mobile.trim(),
+        college: profileForm.college.trim(),
+        passout_year: profileForm.passout_year ? parseInt(profileForm.passout_year, 10) : null,
+        domain: profileForm.domain.trim(),
+        current_location: profileForm.current_location.trim(),
+        skills: profileForm.skills.trim(),
+        github: profileForm.github.trim(),
+        linkedin: profileForm.linkedin.trim()
+      }
+      if (paramId && isStaff && String(user?.id) !== String(studentId)) {
+        payload.userId = studentId
+      }
+      const res = await userAPI.updateProfile(payload)
+      if (res.data?.user && isViewingSelf) {
+        if (updateUser) {
+          updateUser({
+            name: res.data.user.name,
+            email: res.data.user.email
+          })
+        }
+      }
+      setProfileSaveSuccess('Profile updated successfully!')
+      setTimeout(() => {
+        setShowEditProfileModal(false)
+        setProfileSaveSuccess('')
+      }, 1000)
+      await loadProfile()
+    } catch (err) {
+      setProfileSaveError(err.response?.data?.message || err.message || 'Failed to update profile.')
+    } finally {
+      setSavingProfile(false)
     }
   }
 
@@ -334,7 +400,7 @@ export default function StudentProfilePage() {
                   padding: '3px 12px', fontSize: 11, color: 'rgba(255,255,255,0.95)',
                   fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase'
                 }}>
-                  <Activity size={11} /> Student
+                  <Activity size={11} /> {student.role ? (student.role.charAt(0).toUpperCase() + student.role.slice(1)) : 'Student'}
                 </div>
                 {(student.course_name || (student.courses && student.courses.length > 0)) && (
                   <div style={{
@@ -359,7 +425,37 @@ export default function StudentProfilePage() {
               </div>
             </div>
 
-            <div style={{ display: 'flex', gap: 10 }}>
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+              {canEditProfile && (
+                <button
+                  onClick={() => {
+                    setProfileForm({
+                      name: student.name || '',
+                      email: student.email || '',
+                      mobile: student.mobile || student.phone || '',
+                      college: student.college || '',
+                      passout_year: student.passout_year ? String(student.passout_year) : '',
+                      domain: student.domain || '',
+                      current_location: student.current_location || '',
+                      skills: student.skills || '',
+                      github: student.github || '',
+                      linkedin: student.linkedin || ''
+                    })
+                    setProfileSaveError('')
+                    setProfileSaveSuccess('')
+                    setShowEditProfileModal(true)
+                  }}
+                  style={{
+                    ...styles.heroAction,
+                    background: '#ffffff',
+                    color: '#0f172a',
+                    fontWeight: 700,
+                    boxShadow: '0 4px 14px rgba(0,0,0,0.15)'
+                  }}
+                >
+                  <Edit2 size={14} color="#6366f1" /> Edit Profile
+                </button>
+              )}
               {isStaff ? (
                 <>
                   <button
@@ -942,6 +1038,257 @@ export default function StudentProfilePage() {
           )}
         </div>
       </div>
+
+      {/* ── Edit Profile Modal ───────────────────────────── */}
+      {showEditProfileModal && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 9999,
+          background: 'rgba(15, 23, 42, 0.65)', backdropFilter: 'blur(4px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px'
+        }}>
+          <div style={{
+            background: '#ffffff', borderRadius: '16px', width: '100%', maxWidth: '640px',
+            maxHeight: '90vh', overflowY: 'auto',
+            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+            border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column'
+          }}>
+            {/* Header */}
+            <div style={{
+              padding: '20px 24px', borderBottom: '1px solid #e2e8f0',
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              position: 'sticky', top: 0, background: '#ffffff', zIndex: 10
+            }}>
+              <div>
+                <h3 style={{ fontSize: '18px', fontWeight: 800, color: '#0f172a', margin: '0 0 4px' }}>
+                  Edit Profile & Personal Details
+                </h3>
+                <p style={{ fontSize: '12px', color: '#64748b', margin: 0 }}>
+                  Update your contact email, phone number, and personal details
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowEditProfileModal(false)}
+                style={{
+                  background: '#f1f5f9', border: 'none', borderRadius: '8px',
+                  width: '32px', height: '32px', display: 'flex', alignItems: 'center',
+                  justifyContent: 'center', cursor: 'pointer', color: '#64748b'
+                }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Form Body */}
+            <form onSubmit={handleSaveProfile} style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              {profileSaveError && (
+                <div style={{
+                  padding: '12px 16px', background: '#fef2f2', border: '1px solid #fecaca',
+                  borderRadius: '10px', color: '#b91c1c', fontSize: '13px', display: 'flex',
+                  alignItems: 'center', gap: '8px'
+                }}>
+                  <AlertTriangle size={16} />
+                  <span>{profileSaveError}</span>
+                </div>
+              )}
+
+              {profileSaveSuccess && (
+                <div style={{
+                  padding: '12px 16px', background: '#f0fdf4', border: '1px solid #bbf7d0',
+                  borderRadius: '10px', color: '#15803d', fontSize: '13px', display: 'flex',
+                  alignItems: 'center', gap: '8px'
+                }}>
+                  <CheckCircle size={16} />
+                  <span>{profileSaveSuccess}</span>
+                </div>
+              )}
+
+              {/* Personal Details */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
+                    Full Name *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={profileForm.name}
+                    onChange={(e) => setProfileForm(prev => ({ ...prev, name: e.target.value }))}
+                    style={styles.formInput}
+                    placeholder="e.g. Alex Johnson"
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
+                    Email Address *
+                  </label>
+                  <input
+                    type="email"
+                    required
+                    value={profileForm.email}
+                    onChange={(e) => setProfileForm(prev => ({ ...prev, email: e.target.value }))}
+                    style={styles.formInput}
+                    placeholder="e.g. alex@example.com"
+                  />
+                  <span style={{ fontSize: '11px', color: '#64748b' }}>Used for notifications & login</span>
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
+                    Mobile / Phone Number
+                  </label>
+                  <input
+                    type="tel"
+                    value={profileForm.mobile}
+                    onChange={(e) => setProfileForm(prev => ({ ...prev, mobile: e.target.value }))}
+                    style={styles.formInput}
+                    placeholder="e.g. +91 9876543210"
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
+                    Current Location
+                  </label>
+                  <input
+                    type="text"
+                    value={profileForm.current_location}
+                    onChange={(e) => setProfileForm(prev => ({ ...prev, current_location: e.target.value }))}
+                    style={styles.formInput}
+                    placeholder="e.g. Hyderabad, Telangana"
+                  />
+                </div>
+              </div>
+
+              {/* Academic & Professional Details */}
+              <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: '16px', marginTop: '4px' }}>
+                <h4 style={{ fontSize: '13px', fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.04em', margin: '0 0 12px' }}>
+                  Academic & Professional Info
+                </h4>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '16px', marginBottom: '12px' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
+                      College / University
+                    </label>
+                    <input
+                      type="text"
+                      value={profileForm.college}
+                      onChange={(e) => setProfileForm(prev => ({ ...prev, college: e.target.value }))}
+                      style={styles.formInput}
+                      placeholder="e.g. JNTU / IIT Bombay"
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
+                      Passout Year
+                    </label>
+                    <input
+                      type="number"
+                      min="1990"
+                      max="2035"
+                      value={profileForm.passout_year}
+                      onChange={(e) => setProfileForm(prev => ({ ...prev, passout_year: e.target.value }))}
+                      style={styles.formInput}
+                      placeholder="2025"
+                    />
+                  </div>
+                </div>
+
+                <div style={{ marginBottom: '12px' }}>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
+                    Domain / Specialization
+                  </label>
+                  <input
+                    type="text"
+                    value={profileForm.domain}
+                    onChange={(e) => setProfileForm(prev => ({ ...prev, domain: e.target.value }))}
+                    style={styles.formInput}
+                    placeholder="e.g. Full Stack Python, Cloud Computing, Data Science"
+                  />
+                </div>
+
+                <div style={{ marginBottom: '12px' }}>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
+                    Technical Skills (comma-separated)
+                  </label>
+                  <input
+                    type="text"
+                    value={profileForm.skills}
+                    onChange={(e) => setProfileForm(prev => ({ ...prev, skills: e.target.value }))}
+                    style={styles.formInput}
+                    placeholder="e.g. React, Node.js, Python, PostgreSQL, Docker"
+                  />
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
+                      GitHub Profile URL
+                    </label>
+                    <input
+                      type="text"
+                      value={profileForm.github}
+                      onChange={(e) => setProfileForm(prev => ({ ...prev, github: e.target.value }))}
+                      style={styles.formInput}
+                      placeholder="https://github.com/username"
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
+                      LinkedIn Profile URL
+                    </label>
+                    <input
+                      type="text"
+                      value={profileForm.linkedin}
+                      onChange={(e) => setProfileForm(prev => ({ ...prev, linkedin: e.target.value }))}
+                      style={styles.formInput}
+                      placeholder="https://linkedin.com/in/username"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div style={{
+                display: 'flex', justifyContent: 'flex-end', gap: '12px',
+                marginTop: '12px', paddingTop: '16px', borderTop: '1px solid #e2e8f0'
+              }}>
+                <button
+                  type="button"
+                  onClick={() => setShowEditProfileModal(false)}
+                  style={{
+                    padding: '9px 18px', borderRadius: '10px', fontSize: '13px',
+                    fontWeight: 600, background: '#f1f5f9', color: '#475569',
+                    border: '1px solid #cbd5e1', cursor: 'pointer'
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingProfile}
+                  style={{
+                    padding: '9px 20px', borderRadius: '10px', fontSize: '13px',
+                    fontWeight: 700, background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
+                    color: '#ffffff', border: 'none', cursor: savingProfile ? 'not-allowed' : 'pointer',
+                    display: 'flex', alignItems: 'center', gap: '8px',
+                    boxShadow: '0 4px 12px rgba(99, 102, 241, 0.3)'
+                  }}
+                >
+                  <Save size={15} />
+                  {savingProfile ? 'Saving...' : 'Save Profile Changes'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       <style>{`
         @keyframes spin { to { transform: rotate(360deg); } }

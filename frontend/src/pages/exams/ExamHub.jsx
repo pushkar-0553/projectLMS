@@ -5,6 +5,7 @@ import DashboardView from './DashboardView';
 import PapersView from './PapersView';
 import AssignmentsView from './AssignmentsView';
 import EmailCenterView from './EmailCenterView';
+import AiConfigView from './AiConfigView';
 import EvaluationView from './EvaluationView';
 import ReportsView from './ReportsView';
 import QuestionBankView from './QuestionBankView';
@@ -12,7 +13,7 @@ import AuditLogsView from './AuditLogsView';
 import '../../styles/examSystem.css';
 import { 
   BarChart3, FileText, Calendar, Mail, CheckSquare, 
-  PieChart, Database, ShieldAlert, Sparkles, BookOpen
+  PieChart, Database, ShieldAlert, Sparkles, BookOpen, Bot
 } from 'lucide-react';
 
 export default function ExamHub() {
@@ -28,6 +29,7 @@ export default function ExamHub() {
     { id: 'papers', label: 'Question Papers', icon: FileText },
     { id: 'assignments', label: 'Assignments', icon: Calendar },
     { id: 'email-center', label: 'Email Center', icon: Mail },
+    { id: 'ai-config', label: 'AI Configuration', icon: Bot },
     { id: 'evaluation', label: 'Evaluation', icon: CheckSquare },
     { id: 'reports', label: 'Analytics & Reports', icon: PieChart },
     { id: 'question-bank', label: 'Question Bank', icon: Database },
@@ -143,6 +145,7 @@ export default function ExamHub() {
           />
         )}
         {activeTab === 'email-center' && <EmailCenterView />}
+        {activeTab === 'ai-config' && <AiConfigView />}
         {activeTab === 'evaluation' && <EvaluationView courseId={activeCourseId} courseSlug={courseSlug} />}
         {activeTab === 'reports' && <ReportsView courseId={activeCourseId} courseSlug={courseSlug} />}
         {activeTab === 'question-bank' && <QuestionBankView />}

@@ -73,11 +73,16 @@ export const AuthProvider = ({ children }) => {
     setUser(null);
   };
 
+  const updateUser = (updatedData) => {
+    setUser(prev => prev ? { ...prev, ...updatedData } : prev);
+  };
+
   const value = {
     user,
     loading,
     login,
-    logout
+    logout,
+    updateUser
   }
 
   return (

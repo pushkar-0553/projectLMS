@@ -105,29 +105,61 @@ async function verifyCandidateOTP(assignmentCode, rawOtp, clientIp = null, userA
   }
 
   // 4. Retrieve paper content (sanitized for candidate - NO answer keys or explanations)
-  const fullPaper = await getVersionDetails(assignment.paper_version_id);
-  const sanitizedSections = (fullPaper.sections || []).map(sec => ({
-    id: sec.id,
-    title: sec.title,
-    description: sec.description,
-    instructions: sec.instructions,
-    total_marks: sec.total_marks,
-    questions: (sec.questions || []).map(q => ({
-      id: q.id,
-      question_order: q.question_order,
-      question_type: q.question_type,
-      difficulty: q.difficulty,
-      question_text: q.question_text,
-      options: q.options,
-      marks: q.marks,
-      attachment_url: q.attachment_url
-      // Excludes answer_key and explanation!
-    }))
-  }));
+  let fullPaper = null;
+  if (assignment.paper_version_id) {
+    fullPaper = await getVersionDetails(assignment.paper_version_id);
+  }
+  
+  // Self-healing fallback: If not found, check if assignment.paper_version_id was mistakenly set to paper_id
+  if (!fullPaper && assignment.paper_version_id) {
+    const [latestVersionRow] = await db.query(
+      `SELECT id FROM exam_paper_versions WHERE paper_id = ? ORDER BY version_number DESC LIMIT 1`,
+      [assignment.paper_version_id]
+    );
+    if (latestVersionRow.length > 0) {
+      fullPaper = await getVersionDetails(latestVersionRow[0].id);
+      // Auto-heal assignment record in DB
+      await db.query(`UPDATE exam_assignments SET paper_version_id = ? WHERE id = ?`, [latestVersionRow[0].id, assignment.id]);
+    }
+  }
+
+  if (!fullPaper) {
+    throw new Error('Question paper version could not be loaded for this examination assignment.');
+  }
+
+  const sanitizedSections = (fullPaper.sections || []).map(sec => {
+    const secCaps = Array.isArray(sec.default_capabilities) ? sec.default_capabilities : ['CODE_EDITOR'];
+    return {
+      id: sec.id,
+      title: sec.title,
+      description: sec.description,
+      instructions: sec.instructions,
+      total_marks: sec.total_marks,
+      default_capabilities: secCaps,
+      questions: (sec.questions || []).map(q => {
+        const resolvedCaps = Array.isArray(q.capabilities_override)
+          ? q.capabilities_override
+          : (Array.isArray(q.capabilities) ? q.capabilities : secCaps);
+
+        return {
+          id: q.id,
+          question_order: q.question_order,
+          question_type: q.question_type,
+          difficulty: q.difficulty,
+          question_text: q.question_text,
+          options: q.options,
+          marks: q.marks,
+          attachment_url: q.attachment_url,
+          capabilities: resolvedCaps
+          // Excludes answer_key and explanation!
+        };
+      })
+    };
+  });
 
   // 5. Retrieve existing saved answers for this session
   const [answers] = await db.query(`
-    SELECT question_id, answer_text, selected_option, version, client_updated_at, server_synced_at
+    SELECT question_id, answer_text, selected_option, code_language, code_content, version, client_updated_at, server_synced_at
     FROM exam_answers
     WHERE session_id = ?
   `, [session.id]);

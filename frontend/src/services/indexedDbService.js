@@ -39,9 +39,9 @@ function openDB() {
 
 export const indexedDbService = {
   /**
-   * Save or update an answer instantaneously in IndexedDB
+   * Save or update an answer instantaneously in IndexedDB (including code editor content)
    */
-  async saveAnswerLocally(sessionToken, questionId, answerText = null, selectedOption = null, version = 1) {
+  async saveAnswerLocally(sessionToken, questionId, answerText = null, selectedOption = null, version = 1, codeContent = null, codeLanguage = null) {
     try {
       const db = await openDB();
       const compositeKey = `${sessionToken}_${questionId}`;
@@ -51,6 +51,8 @@ export const indexedDbService = {
         questionId,
         answerText,
         selectedOption,
+        codeContent,
+        codeLanguage,
         version,
         clientUpdatedAt: new Date().toISOString(),
         isSynced: false

@@ -112,10 +112,27 @@ class User {
     return rows;
   }
 
-  static async update(userId, { name, mobile, batch }) {
+  static async update(userId, fields) {
+    const allowed = [
+      'name', 'email', 'mobile', 'phone', 'batch', 'domain',
+      'college', 'passout_year', 'current_location', 'skills', 'github', 'linkedin'
+    ];
+    const updates = [];
+    const values = [];
+
+    for (const key of allowed) {
+      if (fields[key] !== undefined) {
+        updates.push(`${key} = ?`);
+        values.push(fields[key]);
+      }
+    }
+
+    if (updates.length === 0) return false;
+
+    values.push(userId);
     const [result] = await pool.execute(
-      'UPDATE Users SET name = ?, mobile = ?, batch = ? WHERE id = ?',
-      [name, mobile, batch, userId]
+      `UPDATE Users SET ${updates.join(', ')} WHERE id = ?`,
+      values
     );
     return result.affectedRows > 0;
   }

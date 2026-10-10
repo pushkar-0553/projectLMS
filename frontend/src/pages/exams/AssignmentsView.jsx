@@ -37,9 +37,10 @@ export default function AssignmentsView({ preselectedPaper = null, onClearPresel
 
   useEffect(() => {
     if (preselectedPaper) {
+      const vId = preselectedPaper.latest_version_id || preselectedPaper.id;
       setForm(prev => ({
         ...prev,
-        paperVersionId: preselectedPaper.id,
+        paperVersionId: vId,
         title: `${preselectedPaper.title} - Assessment`,
         durationMinutes: preselectedPaper.duration_minutes || 60,
         totalMarks: preselectedPaper.total_marks || 100
@@ -260,11 +261,11 @@ export default function AssignmentsView({ preselectedPaper = null, onClearPresel
                     <select
                       value={form.paperVersionId}
                       onChange={(e) => {
-                        const pId = e.target.value;
-                        const p = papers.find(x => x.id === parseInt(pId, 10));
+                        const pvId = e.target.value;
+                        const p = papers.find(x => String(x.latest_version_id || x.id) === String(pvId) || String(x.id) === String(pvId));
                         setForm(prev => ({
                           ...prev,
-                          paperVersionId: pId,
+                          paperVersionId: pvId,
                           durationMinutes: p?.duration_minutes || prev.durationMinutes,
                           totalMarks: p?.total_marks || prev.totalMarks
                         }));
@@ -274,7 +275,7 @@ export default function AssignmentsView({ preselectedPaper = null, onClearPresel
                     >
                       <option value="">-- Choose Ready Paper --</option>
                       {papers.map(p => (
-                        <option key={p.id} value={p.id}>
+                        <option key={p.id} value={p.latest_version_id || p.id}>
                           {p.title} (v{p.latest_version || 1})
                         </option>
                       ))}

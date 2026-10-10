@@ -46,7 +46,7 @@ async function recordViolation(sessionToken, violationType, details = '', client
           status = 'AUTO_SUBMITTED', 
           submission_type = 'VIOLATION', 
           submitted_at = NOW() 
-      WHERE id = ?
+      WHERE id = ? AND status = 'IN_PROGRESS'
     `, [newViolationCount, session.id]);
 
     await db.query(`
@@ -122,13 +122,18 @@ async function submitExam(sessionToken) {
 
   const now = new Date();
 
-  await db.query(`
+  // Atomic status transition guarantees only one submission succeeds if double-clicked
+  const [updateResult] = await db.query(`
     UPDATE exam_sessions 
     SET status = 'SUBMITTED', 
         submission_type = 'MANUAL', 
         submitted_at = ? 
-    WHERE id = ?
+    WHERE id = ? AND status = 'IN_PROGRESS'
   `, [now, session.id]);
+
+  if (updateResult.affectedRows === 0) {
+    return { success: true, message: 'Examination was already submitted.', submittedAt: session.submitted_at || now };
+  }
 
   await db.query(`
     UPDATE exam_assignment_candidates 

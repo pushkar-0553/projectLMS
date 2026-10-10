@@ -33,51 +33,66 @@ async function syncAnswers(sessionToken, answers = []) {
     throw new Error('Examination time has expired. Your submission has been automatically processed.');
   }
 
-  let syncedCount = 0;
+  const validAnswers = answers.filter(a => a && a.questionId);
+  if (validAnswers.length === 0) {
+    return { syncedCount: 0, serverSyncedAt: new Date() };
+  }
 
-  for (const item of answers) {
-    const { questionId, answerText = null, selectedOption = null, version = 1, clientUpdatedAt = null } = item;
-    if (!questionId) continue;
+  // 2. High-performance batch upsert (single database roundtrip for all answers)
+  const values = [];
+  const placeholders = [];
 
-    // Check existing answer
-    const [existing] = await db.query(`
-      SELECT id, version, client_updated_at FROM exam_answers 
-      WHERE session_id = ? AND question_id = ?
-    `, [session.id, questionId]);
+  for (const item of validAnswers) {
+    const { 
+      questionId, 
+      answerText = null, 
+      selectedOption = null, 
+      codeLanguage = null, 
+      code_language = null,
+      codeContent = null, 
+      code_content = null,
+      version = 1, 
+      clientUpdatedAt = null 
+    } = item;
 
+    const resolvedCodeLang = codeLanguage || code_language || null;
+    const resolvedCodeContent = codeContent !== undefined ? codeContent : (code_content !== undefined ? code_content : null);
     const formattedClientTime = clientUpdatedAt ? new Date(clientUpdatedAt) : new Date();
 
-    if (existing.length === 0) {
-      // Insert new
-      await db.query(`
-        INSERT INTO exam_answers 
-          (session_id, question_id, answer_text, selected_option, version, client_updated_at, server_synced_at)
-        VALUES (?, ?, ?, ?, ?, ?, NOW())
-      `, [session.id, questionId, answerText, selectedOption, version, formattedClientTime]);
-      syncedCount++;
-    } else {
-      const current = existing[0];
-      // Deterministic conflict resolution: update if incoming version >= current version
-      if (version >= current.version) {
-        await db.query(`
-          UPDATE exam_answers 
-          SET answer_text = ?, 
-              selected_option = ?, 
-              version = ?, 
-              client_updated_at = ?, 
-              server_synced_at = NOW()
-          WHERE id = ?
-        `, [answerText, selectedOption, version, formattedClientTime, current.id]);
-        syncedCount++;
-      }
-    }
+    placeholders.push('(?, ?, ?, ?, ?, ?, ?, ?, NOW())');
+    values.push(
+      session.id,
+      questionId,
+      answerText,
+      selectedOption,
+      resolvedCodeLang,
+      resolvedCodeContent,
+      version,
+      formattedClientTime
+    );
   }
+
+  const upsertSql = `
+    INSERT INTO exam_answers 
+      (session_id, question_id, answer_text, selected_option, code_language, code_content, version, client_updated_at, server_synced_at)
+    VALUES ${placeholders.join(', ')}
+    ON DUPLICATE KEY UPDATE
+      answer_text = IF(VALUES(version) >= version, VALUES(answer_text), answer_text),
+      selected_option = IF(VALUES(version) >= version, VALUES(selected_option), selected_option),
+      code_language = IF(VALUES(version) >= version, VALUES(code_language), code_language),
+      code_content = IF(VALUES(version) >= version, VALUES(code_content), code_content),
+      client_updated_at = IF(VALUES(version) >= version, VALUES(client_updated_at), client_updated_at),
+      server_synced_at = IF(VALUES(version) >= version, NOW(), server_synced_at),
+      version = IF(VALUES(version) >= version, VALUES(version), version)
+  `;
+
+  await db.query(upsertSql, values);
 
   // Update session heartbeat
   await db.query(`UPDATE exam_sessions SET last_activity_at = NOW() WHERE id = ?`, [session.id]);
 
   return {
-    syncedCount,
+    syncedCount: validAnswers.length,
     serverSyncedAt: new Date()
   };
 }

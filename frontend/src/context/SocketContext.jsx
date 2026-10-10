@@ -13,15 +13,27 @@ export const SocketProvider = ({ children }) => {
 
   useEffect(() => {
     if (user && user.token) {
-      const newSocket = io(import.meta.env.VITE_SOCKET_URL || BACKEND_BASE_URL || 'http://localhost:5000', {
+      const socketUrl = import.meta.env.VITE_SOCKET_URL || BACKEND_BASE_URL || 'http://localhost:5000';
+      const newSocket = io(socketUrl, {
         auth: {
           token: user.token
-        }
+        },
+        transports: ['websocket', 'polling'],
+        reconnectionAttempts: 3,
+        reconnectionDelay: 5000,
+        timeout: 5000,
+        autoConnect: true
+      });
+
+      newSocket.on('connect_error', () => {
+        // Handled gracefully without repeating connection refused console spam
       });
 
       setSocket(newSocket);
 
-      return () => newSocket.close();
+      return () => {
+        newSocket.close();
+      };
     }
   }, [user]);
 

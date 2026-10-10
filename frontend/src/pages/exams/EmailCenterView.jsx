@@ -339,8 +339,10 @@ export default function EmailCenterView() {
           {/* Queue Statistics Cards */}
           <div className="grid grid-cols-4 gap-4">
             <div className="exam-stat-card" style={{ borderLeftColor: '#3b82f6' }}>
-              <span className="stat-label">Pending Queued</span>
-              <span className="stat-value" style={{ color: '#2563eb' }}>{queueData.stats?.QUEUED || 0}</span>
+              <span className="stat-label">Pending / In Queue</span>
+              <span className="stat-value" style={{ color: '#2563eb' }}>
+                {(queueData.stats?.QUEUED || 0) + (queueData.stats?.RETRY_PENDING || 0)}
+              </span>
             </div>
             <div className="exam-stat-card" style={{ borderLeftColor: '#f59e0b' }}>
               <span className="stat-label">In Processing</span>
@@ -348,11 +350,15 @@ export default function EmailCenterView() {
             </div>
             <div className="exam-stat-card" style={{ borderLeftColor: '#10b981' }}>
               <span className="stat-label">Delivered Successfully</span>
-              <span className="stat-value" style={{ color: '#16a34a' }}>{queueData.stats?.SENT || 0}</span>
+              <span className="stat-value" style={{ color: '#16a34a' }}>
+                {(queueData.stats?.SENT || 0) + (queueData.stats?.DELIVERED || 0) + (queueData.stats?.OPENED || 0)}
+              </span>
             </div>
             <div className="exam-stat-card" style={{ borderLeftColor: '#ef4444' }}>
-              <span className="stat-label">Failed / Retries</span>
-              <span className="stat-value" style={{ color: '#dc2626' }}>{queueData.stats?.FAILED || 0}</span>
+              <span className="stat-label">Failed / Retrying</span>
+              <span className="stat-value" style={{ color: '#dc2626' }}>
+                {(queueData.stats?.FAILED || 0) + (queueData.stats?.RETRY_PENDING || 0)}
+              </span>
             </div>
           </div>
 
@@ -373,27 +379,46 @@ export default function EmailCenterView() {
               <tbody>
                 {loadingQueue ? (
                   <tr><td colSpan={7} style={{ textAlign: 'center', padding: '24px' }}>Loading queue...</td></tr>
-                ) : (queueData.recentJobs || []).length === 0 ? (
+                ) : (queueData.recentJobs || queueData.jobs || []).length === 0 ? (
                   <tr><td colSpan={7} style={{ textAlign: 'center', padding: '28px', color: 'var(--text-muted)' }}>No recent email jobs in queue.</td></tr>
                 ) : (
-                  (queueData.recentJobs || []).map(job => (
+                  (queueData.recentJobs || queueData.jobs || []).map(job => (
                     <tr key={job.id}>
                       <td style={{ fontFamily: 'var(--font-mono)', fontSize: '12px' }}>#{job.id}</td>
                       <td style={{ fontWeight: 600 }}>{job.recipient_email}</td>
                       <td style={{ maxWidth: '240px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {job.subject}
                       </td>
-                      <td style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{job.sender_email || 'Auto-assigning'}</td>
+                      <td style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{job.smtp_sender || job.sender_email || 'Auto-assigning'}</td>
                       <td>
                         {job.status === 'OPENED' && <span className="badge" style={{ background: '#ecfdf5', color: '#047857', border: '1px solid #a7f3d0' }}>Opened / Read</span>}
                         {(job.status === 'SENT' || job.status === 'DELIVERED') && <span className="badge badge-success">Reached / Sent</span>}
                         {job.status === 'QUEUED' && <span className="badge badge-warning">On the way / Queued</span>}
                         {job.status === 'PROCESSING' && <span className="badge badge-primary">Sending...</span>}
-                        {job.status === 'FAILED' && <span className="badge badge-danger">Not Reached / Failed</span>}
+                        {job.status === 'RETRY_PENDING' && (
+                          <div>
+                            <span className="badge badge-warning">Retrying (Queued)</span>
+                            {job.last_error && (
+                              <div style={{ fontSize: '10px', color: '#b45309', maxWidth: '160px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={job.last_error}>
+                                {job.last_error}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                        {job.status === 'FAILED' && (
+                          <div>
+                            <span className="badge badge-danger">Not Reached / Failed</span>
+                            {job.last_error && (
+                              <div style={{ fontSize: '10px', color: '#ef4444', maxWidth: '160px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={job.last_error}>
+                                {job.last_error}
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </td>
-                      <td>{job.attempts} / 3</td>
+                      <td>{job.attempt_count !== undefined ? job.attempt_count : (job.attempts || 0)} / 3</td>
                       <td style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
-                        {new Date(job.updated_at).toLocaleTimeString()}
+                        {new Date(job.updated_at || job.created_at).toLocaleTimeString()}
                       </td>
                     </tr>
                   ))
@@ -428,11 +453,10 @@ export default function EmailCenterView() {
                 {/* How to get App Password banner */}
                 <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 'var(--radius-md)', padding: '12px 14px', fontSize: '12px', color: '#334155', lineHeight: '1.5' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 700, color: 'var(--primary)', marginBottom: '4px' }}>
-                    <Key size={14} /> How to get an App Password (Gmail / Google Workspace):
+                    <Key size={14} /> Credentials & Provider Setup:
                   </div>
-                  1. Visit your <strong>Google Account &gt; Security &gt; 2-Step Verification</strong>.<br />
-                  2. Scroll down to <strong>App Passwords</strong> and generate a password for "LMS Exams".<br />
-                  3. Paste the generated 16-character password below (your regular login password will not work).
+                  • <strong>Gmail / Google Workspace:</strong> Visit <em>Google Account &gt; Security &gt; 2-Step Verification &gt; App Passwords</em>. Generate a 16-character password and paste below.<br />
+                  • <strong>Render Deployment (Recommended):</strong> Cloud hosts like Render block SMTP ports 465/587. You can use <strong>Resend</strong> (<code style={{ background: '#e2e8f0', padding: '1px 4px', borderRadius: '3px' }}>re_...</code>) or <strong>Brevo</strong> (<code style={{ background: '#e2e8f0', padding: '1px 4px', borderRadius: '3px' }}>xkeysib-...</code>) by entering your API key below. It dispatches over HTTPS port 443 with zero timeouts.
                 </div>
 
                 {/* 1. Email Address */}
@@ -533,8 +557,9 @@ export default function EmailCenterView() {
                             }}
                             className="select"
                           >
-                            <option value="465-SSL">Port 465 (SSL - Recommended)</option>
+                            <option value="465-SSL">Port 465 (SSL - Gmail Standard)</option>
                             <option value="587-STARTTLS">Port 587 (STARTTLS)</option>
+                            <option value="443-HTTPS">Port 443 (HTTPS - Resend / Brevo API for Render)</option>
                           </select>
                         </div>
                       </div>

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { examApi as api } from '../../services/examApi';
 import { 
   CheckSquare, Award, Clock, AlertTriangle, ChevronRight, 
-  ChevronLeft, Save, CheckCircle, FileText, Send, User
+  ChevronLeft, Save, CheckCircle, FileText, Send, User, Copy
 } from 'lucide-react';
 
 export default function EvaluationView({ courseId, courseSlug }) {
@@ -284,14 +284,55 @@ export default function EvaluationView({ courseId, courseSlug }) {
                           </div>
                         )}
 
-                        {/* Student's Written Answer */}
+                        {/* Student's Written Answer & Code */}
                         <div style={{ background: 'var(--bg-main)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-md)', padding: '14px', marginBottom: '16px' }}>
-                          <span style={{ fontSize: '12px', fontWeight: 'bold', color: 'var(--text-muted)', display: 'block', marginBottom: '6px' }}>
-                            Candidate Submitted Answer:
-                          </span>
-                          <div style={{ fontSize: '14px', fontFamily: 'var(--font-mono)', whiteSpace: 'pre-wrap', color: q.studentAnswer ? 'var(--text-primary)' : 'var(--text-muted)' }}>
-                            {q.studentAnswer || '(No answer provided by candidate)'}
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                            <span style={{ fontSize: '12px', fontWeight: 'bold', color: 'var(--text-muted)' }}>
+                              Candidate Submitted Answer:
+                            </span>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              {q.codeLanguage && (
+                                <span className="badge badge-primary" style={{ fontSize: '11px', textTransform: 'uppercase' }}>
+                                  {q.codeLanguage}
+                                </span>
+                              )}
+                              {q.codeContent && (
+                                <button
+                                  type="button"
+                                  onClick={() => navigator.clipboard?.writeText(q.codeContent)}
+                                  className="btn btn-sm btn-outline"
+                                  style={{ padding: '2px 8px', fontSize: '11px', gap: '4px' }}
+                                  title="Copy candidate code"
+                                >
+                                  <Copy size={12} /> Copy
+                                </button>
+                              )}
+                            </div>
                           </div>
+
+                          {q.codeContent ? (
+                            <div style={{
+                              background: '#0f172a',
+                              color: '#38bdf8',
+                              border: '1px solid #1e293b',
+                              borderRadius: '6px',
+                              padding: '12px',
+                              fontFamily: 'monospace',
+                              fontSize: '13px',
+                              lineHeight: '1.6',
+                              overflowX: 'auto',
+                              whiteSpace: 'pre',
+                              marginBottom: (q.studentAnswer && q.studentAnswer !== q.codeContent) ? '10px' : 0
+                            }}>
+                              {q.codeContent}
+                            </div>
+                          ) : null}
+
+                          {(!q.codeContent || (q.studentAnswer && q.studentAnswer !== q.codeContent)) && (
+                            <div style={{ fontSize: '14px', whiteSpace: 'pre-wrap', color: q.studentAnswer ? 'var(--text-primary)' : 'var(--text-muted)' }}>
+                              {q.studentAnswer || '(No answer provided by candidate)'}
+                            </div>
+                          )}
                         </div>
 
                         {/* Evaluator Controls */}
