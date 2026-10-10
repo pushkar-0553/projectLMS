@@ -36,9 +36,19 @@ async function updateSmtpAccount(req, res) {
   }
 }
 
+async function deleteSmtpAccount(req, res) {
+  try {
+    const result = await smtpService.deleteSmtpAccount(req.params.id, req.user.id);
+    res.json(result);
+  } catch (err) {
+    res.status(400).json({ success: false, message: err.message });
+  }
+}
+
 module.exports = {
   listSmtpAccounts,
   createSmtpAccount,
   testSmtpConnection,
-  updateSmtpAccount
+  updateSmtpAccount,
+  deleteSmtpAccount
 };

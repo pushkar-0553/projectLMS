@@ -51,6 +51,8 @@ router.get('/smtp', protect, isCoordinatorOrAdmin, smtpController.listSmtpAccoun
 router.post('/smtp', protect, isCoordinatorOrAdmin, smtpController.createSmtpAccount);
 router.post('/smtp/:id/test', protect, isCoordinatorOrAdmin, smtpController.testSmtpConnection);
 router.patch('/smtp/:id', protect, isCoordinatorOrAdmin, smtpController.updateSmtpAccount);
+router.put('/smtp/:id', protect, isCoordinatorOrAdmin, smtpController.updateSmtpAccount);
+router.delete('/smtp/:id', protect, isCoordinatorOrAdmin, smtpController.deleteSmtpAccount);
 
 // 6. Email Queue Routes
 router.get('/email-queue', protect, isCoordinatorOrAdmin, emailQueueController.getEmailQueueStatus);

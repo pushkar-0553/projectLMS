@@ -177,6 +177,9 @@ export const examApi = {
     update: (id, data) => request(`/smtp/${id}`, {
       method: 'PATCH',
       body: JSON.stringify(data)
+    }),
+    delete: (id) => request(`/smtp/${id}`, {
+      method: 'DELETE'
     })
   },
 

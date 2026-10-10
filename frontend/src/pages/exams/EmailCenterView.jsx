@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { examApi as api } from '../../services/examApi';
 import { 
   Mail, Plus, ShieldCheck, AlertCircle, RefreshCw, 
-  CheckCircle2, Clock, Play, Activity, AlertTriangle, Key, Info, ChevronDown, ChevronUp
+  CheckCircle2, Clock, Play, Activity, AlertTriangle, Key, Info, ChevronDown, ChevronUp,
+  Edit2, Trash2
 } from 'lucide-react';
 
 export default function EmailCenterView() {
@@ -12,10 +13,13 @@ export default function EmailCenterView() {
   const [accounts, setAccounts] = useState([]);
   const [loadingAccounts, setLoadingAccounts] = useState(true);
   const [testingId, setTestingId] = useState(null);
+  const [deletingId, setDeletingId] = useState(null);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [modalMode, setModalMode] = useState('ADD'); // 'ADD' | 'EDIT'
+  const [editingAccountId, setEditingAccountId] = useState(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
 
-  // Simplified new account form
+  // SMTP account form data
   const [formData, setFormData] = useState({
     senderEmail: '',
     password: '',
@@ -73,28 +77,75 @@ export default function EmailCenterView() {
     }
   };
 
-  const handleCreateAccount = async (e) => {
+  const handleOpenAddModal = () => {
+    setModalMode('ADD');
+    setEditingAccountId(null);
+    setFormData({
+      senderEmail: '',
+      password: '',
+      dailyQuota: 500,
+      displayName: '',
+      host: '',
+      port: 465,
+      secureType: 'SSL'
+    });
+    setShowAdvanced(false);
+    setShowAddModal(true);
+  };
+
+  const handleOpenEditModal = (acc) => {
+    setModalMode('EDIT');
+    setEditingAccountId(acc.id);
+    setFormData({
+      senderEmail: acc.sender_email || '',
+      password: '',
+      dailyQuota: acc.daily_quota || 500,
+      displayName: acc.display_name || '',
+      host: acc.host || '',
+      port: acc.port || 465,
+      secureType: acc.secure_type || 'SSL'
+    });
+    setShowAdvanced(true);
+    setShowAddModal(true);
+  };
+
+  const handleSubmitAccount = async (e) => {
     e.preventDefault();
-    if (!formData.senderEmail || !formData.password) {
-      alert('Please provide both your Email ID and App Password.');
+    if (!formData.senderEmail) {
+      alert('Please provide the sender Email ID.');
+      return;
+    }
+    if (modalMode === 'ADD' && !formData.password) {
+      alert('Please provide your 16-character App Password.');
       return;
     }
     try {
-      await api.smtp.create(formData);
-      alert('SMTP account encrypted and stored successfully!');
+      if (modalMode === 'EDIT') {
+        const res = await api.smtp.update(editingAccountId, formData);
+        alert(res.message || 'SMTP account updated successfully!');
+      } else {
+        await api.smtp.create(formData);
+        alert('SMTP account encrypted and stored successfully!');
+      }
       setShowAddModal(false);
-      setFormData({
-        senderEmail: '',
-        password: '',
-        dailyQuota: 500,
-        displayName: '',
-        host: '',
-        port: 465,
-        secureType: 'SSL'
-      });
       loadAccounts();
     } catch (err) {
-      alert(`Error creating SMTP account: ${err.message}`);
+      alert(`Error ${modalMode === 'EDIT' ? 'updating' : 'creating'} SMTP account: ${err.message}`);
+    }
+  };
+
+  const handleDeleteAccount = async (id, email) => {
+    const confirmed = window.confirm(`Are you sure you want to delete SMTP account "${email}"? Any pending jobs will be routed to other available accounts.`);
+    if (!confirmed) return;
+    setDeletingId(id);
+    try {
+      await api.smtp.delete(id);
+      alert('SMTP account deleted successfully!');
+      loadAccounts();
+    } catch (err) {
+      alert(`Failed to delete SMTP account: ${err.message}`);
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -102,7 +153,7 @@ export default function EmailCenterView() {
     setRetrying(true);
     try {
       const res = await api.emailQueue.retryFailed();
-      alert(`Re-queued ${res.requeuedCount} failed email jobs!`);
+      alert(`Re-queued ${res.requeuedCount !== undefined ? res.requeuedCount : 0} failed/postponed email jobs!`);
       loadQueueStatus();
     } catch (err) {
       alert(`Retry failed: ${err.message}`);
@@ -141,7 +192,7 @@ export default function EmailCenterView() {
           </div>
 
           {activeTab === 'ACCOUNTS' && (
-            <button onClick={() => setShowAddModal(true)} className="btn btn-primary btn-sm">
+            <button onClick={handleOpenAddModal} className="btn btn-primary btn-sm">
               <Plus size={16} /> Configure SMTP Account
             </button>
           )}
@@ -177,7 +228,7 @@ export default function EmailCenterView() {
               <p style={{ color: 'var(--text-secondary)', fontSize: '13px', maxWidth: '420px', margin: '0 auto 18px' }}>
                 Add your email address and 16-character App Password to start delivering exam invitations and OTP codes automatically.
               </p>
-              <button onClick={() => setShowAddModal(true)} className="btn btn-primary" style={{ margin: '0 auto' }}>
+              <button onClick={handleOpenAddModal} className="btn btn-primary" style={{ margin: '0 auto' }}>
                 <Plus size={16} /> Add First SMTP Account
               </button>
             </div>
@@ -224,22 +275,51 @@ export default function EmailCenterView() {
                               <CheckCircle2 size={12} /> Healthy
                             </span>
                           ) : (
-                            <span className="badge badge-danger">
-                              <AlertCircle size={12} /> Failing
-                            </span>
+                            <div>
+                              <span className="badge badge-danger">
+                                <AlertCircle size={12} /> Failing
+                              </span>
+                              {acc.last_error_message && (
+                                <div 
+                                  style={{ fontSize: '11px', color: 'var(--danger)', marginTop: '4px', maxWidth: '180px', lineHeight: '1.2' }} 
+                                  title={acc.last_error_message}
+                                >
+                                  {acc.last_error_message}
+                                </div>
+                              )}
+                            </div>
                           )}
                         </td>
                         <td style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
                           {acc.last_tested_at ? new Date(acc.last_tested_at).toLocaleString() : 'Not tested'}
                         </td>
                         <td style={{ textAlign: 'right' }}>
-                          <button
-                            onClick={() => handleTestConnection(acc.id)}
-                            disabled={testingId === acc.id}
-                            className="btn btn-secondary btn-sm"
-                          >
-                            {testingId === acc.id ? 'Verifying...' : 'Test Connection'}
-                          </button>
+                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                            <button
+                              onClick={() => handleTestConnection(acc.id)}
+                              disabled={testingId === acc.id}
+                              className="btn btn-secondary btn-sm"
+                              title="Test SMTP connection and credentials"
+                            >
+                              {testingId === acc.id ? 'Testing...' : 'Test'}
+                            </button>
+                            <button
+                              onClick={() => handleOpenEditModal(acc)}
+                              className="btn btn-secondary btn-sm"
+                              title="Edit email, password, or host settings"
+                            >
+                              <Edit2 size={13} /> Edit
+                            </button>
+                            <button
+                              onClick={() => handleDeleteAccount(acc.id, acc.sender_email)}
+                              disabled={deletingId === acc.id}
+                              className="btn btn-secondary btn-sm"
+                              style={{ color: 'var(--danger)', borderColor: '#fca5a5' }}
+                              title="Delete SMTP account connection"
+                            >
+                              <Trash2 size={13} /> {deletingId === acc.id ? '...' : 'Delete'}
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     );
@@ -325,7 +405,7 @@ export default function EmailCenterView() {
       )}
 
       {/* =========================================================================
-          SIMPLIFIED SMTP CONFIGURATION MODAL
+          SIMPLIFIED SMTP CONFIGURATION & EDIT MODAL
           ========================================================================= */}
       {showAddModal && (
         <div className="modal-overlay">
@@ -333,16 +413,16 @@ export default function EmailCenterView() {
             <div className="modal-header">
               <div>
                 <h3 style={{ fontSize: '18px', fontWeight: 800, margin: '0 0 2px', color: 'var(--text-primary)' }}>
-                  Configure SMTP Account
+                  {modalMode === 'EDIT' ? 'Update SMTP Account' : 'Configure SMTP Account'}
                 </h3>
                 <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-                  Simple setup: Enter your Email ID, App Password, and daily send limit.
+                  {modalMode === 'EDIT' ? 'Modify email credentials, quota, or server connection settings.' : 'Simple setup: Enter your Email ID, App Password, and daily send limit.'}
                 </span>
               </div>
               <button onClick={() => setShowAddModal(false)} className="btn btn-ghost btn-sm">&times;</button>
             </div>
 
-            <form onSubmit={handleCreateAccount}>
+            <form onSubmit={handleSubmitAccount}>
               <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                 
                 {/* How to get App Password banner */}
@@ -374,17 +454,21 @@ export default function EmailCenterView() {
 
                 {/* 2. App Password */}
                 <div>
-                  <label className="label">App Password *</label>
+                  <label className="label">
+                    App Password {modalMode === 'ADD' ? '*' : '(Leave blank to keep existing password)'}
+                  </label>
                   <input
                     type="password"
                     value={formData.password}
                     onChange={(e) => setFormData(prev => ({ ...prev, password: e.target.value }))}
-                    placeholder="16-character App Password (e.g. abcd efgh ijkl mnop)"
+                    placeholder={modalMode === 'EDIT' ? '•••••••••••••••• (Leave blank to keep existing)' : '16-character App Password (e.g. abcd efgh ijkl mnop)'}
                     className="input"
-                    required
+                    required={modalMode === 'ADD'}
                   />
                   <span style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px', display: 'block' }}>
-                    Stored securely using AES-256-GCM military-grade encryption.
+                    {modalMode === 'EDIT' 
+                      ? 'Enter a new 16-character App Password only if you wish to change it.' 
+                      : 'Stored securely using AES-256-GCM military-grade encryption.'}
                   </span>
                 </div>
 
@@ -465,7 +549,7 @@ export default function EmailCenterView() {
                   Cancel
                 </button>
                 <button type="submit" className="btn btn-primary">
-                  Encrypt & Save SMTP Account
+                  {modalMode === 'EDIT' ? 'Update SMTP Account' : 'Encrypt & Save SMTP Account'}
                 </button>
               </div>
             </form>

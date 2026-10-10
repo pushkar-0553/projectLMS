@@ -315,19 +315,24 @@ async function processNextEmailJob() {
       return;
     }
 
-    // 3. Prepare transporter
-    const plainPassword = decrypt(smtpAcc.encrypted_password, smtpAcc.iv, smtpAcc.auth_tag);
-    const transporter = nodemailer.createTransport({
-      host: smtpAcc.host,
-      port: smtpAcc.port,
-      secure: smtpAcc.secure_type === 'SSL' || smtpAcc.port === 465,
+    // 3. Prepare transporter with resilient timeouts and auto-fallback
+    const plainPassword = decrypt(smtpAcc.encrypted_password, smtpAcc.iv, smtpAcc.auth_tag).replace(/\s+/g, '');
+    const createTransporter = (host, port, secure) => nodemailer.createTransport({
+      host,
+      port,
+      secure,
       auth: {
         user: smtpAcc.username,
         pass: plainPassword
       },
       tls: { rejectUnauthorized: false },
-      connectionTimeout: 10000
+      connectionTimeout: 25000,
+      greetingTimeout: 25000,
+      socketTimeout: 25000
     });
+
+    const isPrimarySecure = smtpAcc.secure_type === 'SSL' || smtpAcc.port === 465;
+    let transporter = createTransporter(smtpAcc.host, smtpAcc.port, isPrimarySecure);
 
     const startTime = Date.now();
     let sendSuccess = false;
@@ -349,15 +354,45 @@ async function processNextEmailJob() {
         finalHtml = finalHtml.replace(/\[REVERT_OTP\]/g, decOtp);
       }
 
-      const info = await transporter.sendMail({
-        from: `"${smtpAcc.display_name}" <${smtpAcc.sender_email}>`,
-        to: `"${job.recipient_name}" <${job.recipient_email}>`,
-        subject: job.subject,
-        html: finalHtml
-      });
+      try {
+        const info = await transporter.sendMail({
+          from: `"${smtpAcc.display_name}" <${smtpAcc.sender_email}>`,
+          to: `"${job.recipient_name}" <${job.recipient_email}>`,
+          subject: job.subject,
+          html: finalHtml
+        });
 
-      sendSuccess = true;
-      responseMessage = info.response || 'Message delivered successfully';
+        sendSuccess = true;
+        responseMessage = info.response || 'Message delivered successfully';
+      } catch (primarySendErr) {
+        // If connection timed out or socket error, attempt alternate port fallback
+        const isNetworkOrTimeout = /timeout|ECONNREFUSED|ENOTFOUND|ETIMEDOUT/i.test(primarySendErr.message);
+        if (isNetworkOrTimeout && (smtpAcc.port === 465 || smtpAcc.port === 587)) {
+          const altPort = smtpAcc.port === 465 ? 587 : 465;
+          const altSecure = altPort === 465;
+          console.warn(`[EMAIL WORKER] Primary port ${smtpAcc.port} timed out for job #${job.id}. Retrying on fallback port ${altPort}...`);
+          try {
+            const altTransporter = createTransporter(smtpAcc.host, altPort, altSecure);
+            const info = await altTransporter.sendMail({
+              from: `"${smtpAcc.display_name}" <${smtpAcc.sender_email}>`,
+              to: `"${job.recipient_name}" <${job.recipient_email}>`,
+              subject: job.subject,
+              html: finalHtml
+            });
+            sendSuccess = true;
+            responseMessage = (info.response || 'Delivered') + ` (via fallback port ${altPort})`;
+
+            // Save the working port so next emails don't hit the timeout
+            await db.query(`UPDATE smtp_accounts SET port = ?, secure_type = ? WHERE id = ?`, [altPort, altSecure ? 'SSL' : 'STARTTLS', smtpAcc.id]);
+          } catch (altErr) {
+            sendSuccess = false;
+            errorMessage = altErr.message;
+          }
+        } else {
+          sendSuccess = false;
+          errorMessage = primarySendErr.message;
+        }
+      }
     } catch (sendErr) {
       sendSuccess = false;
       errorMessage = sendErr.message;
@@ -476,20 +511,27 @@ async function getEmailQueueStatus({ status = null, assignmentId = null, limit =
  * Retry failed email jobs manually
  */
 async function retryFailedJobs(jobIds = []) {
+  let result;
   if (jobIds.length > 0) {
-    await db.query(`
+    [result] = await db.query(`
       UPDATE email_jobs 
-      SET status = 'RETRY_PENDING', attempt_count = 0, scheduled_for = NOW()
+      SET status = 'QUEUED', attempt_count = 0, scheduled_for = NOW(), last_error = NULL
       WHERE id IN (?)
     `, [jobIds]);
   } else {
-    await db.query(`
+    [result] = await db.query(`
       UPDATE email_jobs 
-      SET status = 'RETRY_PENDING', attempt_count = 0, scheduled_for = NOW()
-      WHERE status = 'FAILED'
+      SET status = 'QUEUED', attempt_count = 0, scheduled_for = NOW(), last_error = NULL
+      WHERE status IN ('FAILED', 'RETRY_PENDING')
     `);
   }
-  return { success: true };
+
+  // Trigger processing immediately in background
+  setTimeout(() => {
+    processNextEmailJob().catch(e => console.warn('[EMAIL WORKER] Immediate retry tick error:', e.message));
+  }, 100);
+
+  return { success: true, requeuedCount: result.affectedRows || 0 };
 }
 
 module.exports = {
