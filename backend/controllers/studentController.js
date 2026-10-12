@@ -22,16 +22,25 @@ const studentController = {
       const Course = require('../models/courseModel');
       const targetCourseId = await Course.resolveCourseId(req);
 
-      // Issue #27 fix: Verify ownership/assignment of the task to this student
-      const tasks = await Task.getTasksForStudent(studentId, targetCourseId);
-      const isAssigned = tasks.some(t => t.id == id);
-      if (!isAssigned) {
-        return res.status(403).json({ message: 'Access denied. This task is not assigned to you.' });
-      }
-
       const task = await Task.findById(id);
       if (!task) {
         return res.status(404).json({ message: 'Task not found' });
+      }
+
+      // Fast assignment check with targeted indexed query instead of loading all tasks
+      const [assigned] = await pool.execute(
+        `SELECT ta.id FROM TaskAssignments ta
+         LEFT JOIN StudentBatchMap sbm ON sbm.student_id = ?
+         WHERE ta.task_id = ? AND (
+           ta.student_id = ? 
+           OR ta.sub_batch_id = sbm.sub_batch_id
+           OR (ta.batch_id = sbm.batch_id AND ta.sub_batch_id IS NULL AND ta.student_id IS NULL)
+         ) LIMIT 1`,
+        [studentId, id, studentId]
+      );
+
+      if (assigned.length === 0) {
+        return res.status(403).json({ message: 'Access denied. This task is not assigned to you.' });
       }
       
       res.json(task);
@@ -143,57 +152,57 @@ const studentController = {
       const projParams = [studentId];
       if (targetCourseId) projParams.push(targetCourseId);
 
-      // 1. Fetch recent task submissions
-      const [submissions] = await pool.execute(
-        `SELECT s.id, s.status, s.submitted_at as date, t.title as task_title, 'task_submission' as type 
-         FROM Submissions s 
-         JOIN Tasks t ON s.task_id = t.id 
-         WHERE s.student_id = ?${taskCourseClause}
-         ORDER BY s.submitted_at DESC LIMIT 5`,
-        taskParams
-      );
-
-      // 2. Fetch recent main project steps progress
-      const [mainProgress] = await pool.execute(
-        `SELECT sp.id, sp.status, sp.submitted_at as date, p.title as project_title, s.title as step_title, s.step_order, 'step_progress' as type 
-         FROM StudentProgress sp 
-         JOIN Projects p ON sp.project_id = p.id 
-         JOIN Steps s ON sp.step_id = s.id 
-         WHERE sp.user_id = ?${projCourseClause}
-         ORDER BY sp.submitted_at DESC LIMIT 5`,
-        projParams
-      );
-
-      // 3. Fetch recent simple project steps progress
-      const [simpleProgress] = await pool.execute(
-        `SELECT sp.id, 'approved' as status, sp.completion_time as date, p.title as project_title, s.title as step_title, s.step_order, 'simple_step' as type 
-         FROM StepProgress sp 
-         JOIN Projects p ON sp.project_id = p.id 
-         JOIN Steps s ON sp.step_id = s.id 
-         WHERE sp.user_id = ? AND sp.completed = TRUE${projCourseClause}
-         ORDER BY sp.completion_time DESC LIMIT 5`,
-        projParams
-      );
-
-      // 4. Fetch recent mock interviews
-      const [interviews] = await pool.execute(
-        `SELECT mi.id, mi.status, mi.scheduled_at as date, mi.title, f.name as faculty_name, 'mock_interview' as type 
-         FROM MockInterviews mi 
-         JOIN Users f ON mi.faculty_id = f.id 
-         WHERE mi.student_id = ? 
-         ORDER BY mi.scheduled_at DESC LIMIT 5`,
-        [studentId]
-      );
-
-      // 5. Fetch recent mentoring sessions
-      const [mentoring] = await pool.execute(
-        `SELECT ms.id, 'completed' as status, ms.session_date as date, ms.topic as title, f.name as faculty_name, 'mentoring' as type 
-         FROM MentoringSessions ms 
-         JOIN Users f ON ms.faculty_id = f.id 
-         WHERE ms.student_id = ? 
-         ORDER BY ms.session_date DESC LIMIT 5`,
-        [studentId]
-      );
+      // Execute all 5 independent activity queries in parallel via Promise.all
+      const [
+        [submissions],
+        [mainProgress],
+        [simpleProgress],
+        [interviews],
+        [mentoring]
+      ] = await Promise.all([
+        pool.execute(
+          `SELECT s.id, s.status, s.submitted_at as date, t.title as task_title, 'task_submission' as type 
+           FROM Submissions s 
+           JOIN Tasks t ON s.task_id = t.id 
+           WHERE s.student_id = ?${taskCourseClause}
+           ORDER BY s.submitted_at DESC LIMIT 5`,
+          taskParams
+        ),
+        pool.execute(
+          `SELECT sp.id, sp.status, sp.submitted_at as date, p.title as project_title, s.title as step_title, s.step_order, 'step_progress' as type 
+           FROM StudentProgress sp 
+           JOIN Projects p ON sp.project_id = p.id 
+           JOIN Steps s ON sp.step_id = s.id 
+           WHERE sp.user_id = ?${projCourseClause}
+           ORDER BY sp.submitted_at DESC LIMIT 5`,
+          projParams
+        ),
+        pool.execute(
+          `SELECT sp.id, 'approved' as status, sp.completion_time as date, p.title as project_title, s.title as step_title, s.step_order, 'simple_step' as type 
+           FROM StepProgress sp 
+           JOIN Projects p ON sp.project_id = p.id 
+           JOIN Steps s ON sp.step_id = s.id 
+           WHERE sp.user_id = ? AND sp.completed = TRUE${projCourseClause}
+           ORDER BY sp.completion_time DESC LIMIT 5`,
+          projParams
+        ),
+        pool.execute(
+          `SELECT mi.id, mi.status, mi.scheduled_at as date, mi.title, f.name as faculty_name, 'mock_interview' as type 
+           FROM MockInterviews mi 
+           JOIN Users f ON mi.faculty_id = f.id 
+           WHERE mi.student_id = ? 
+           ORDER BY mi.scheduled_at DESC LIMIT 5`,
+          [studentId]
+        ),
+        pool.execute(
+          `SELECT ms.id, 'completed' as status, ms.session_date as date, ms.topic as title, f.name as faculty_name, 'mentoring' as type 
+           FROM MentoringSessions ms 
+           JOIN Users f ON ms.faculty_id = f.id 
+           WHERE ms.student_id = ? 
+           ORDER BY ms.session_date DESC LIMIT 5`,
+          [studentId]
+        )
+      ]);
 
       // Combine, format, and sort all activities by date descending
       const activities = [

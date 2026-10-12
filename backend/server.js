@@ -33,6 +33,8 @@ const rateLimit = require('express-rate-limit');
 const { initSocket } = require('./socket');
 
 const app = express();
+const { perfMiddleware } = require('./utils/perfTracker');
+app.use(perfMiddleware);
 const server = http.createServer(app);
 const PORT = process.env.PORT || 5000;
 
@@ -136,3 +138,4 @@ server.listen(PORT, () => {
     console.error('[Exam System] Failed to start email queue worker:', err.message);
   }
 });
+

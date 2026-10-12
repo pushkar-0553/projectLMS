@@ -4,20 +4,23 @@ const User = require('../models/userModel');
 const requireRole = (roles) => {
   return async (req, res, next) => {
     try {
-      await authenticateToken(req, res, async () => {
-        const user = await User.findById(req.user.id);
-        
-        if (!user) {
-          return res.status(404).json({ message: 'User not found' });
-        }
-
-        if (!roles.includes(user.role) && user.role !== 'super_admin') {
+      // Fast Path: req.user is already authenticated by authenticateToken middleware
+      if (req.user && req.user.role) {
+        if (!roles.includes(req.user.role) && req.user.role !== 'super_admin') {
           return res.status(403).json({ 
             message: 'Access denied. Insufficient permissions.' 
           });
         }
+        return next();
+      }
 
-        req.user = { ...req.user, role: user.role };
+      // Fallback: If route did not explicitly include authenticateToken before this
+      await authenticateToken(req, res, () => {
+        if (!req.user || (!roles.includes(req.user.role) && req.user.role !== 'super_admin')) {
+          return res.status(403).json({ 
+            message: 'Access denied. Insufficient permissions.' 
+          });
+        }
         next();
       });
     } catch (error) {

@@ -1,9 +1,35 @@
 const { verifyToken } = require('../utils/token');
 const User = require('../models/userModel');
+const { recordAuthDuration } = require('../utils/perfTracker');
 
-// Issue #3 fix: Re-validate role from DB on every request
+// High-Performance In-Memory User Auth Cache (60s TTL)
+// Avoids repeated cross-network SQL round trips for high-frequency user/role checks
+const userCache = new Map();
+const USER_CACHE_TTL_MS = 60 * 1000;
+
+function invalidateUserCache(userId) {
+  if (userId) {
+    userCache.delete(String(userId));
+    userCache.delete(Number(userId));
+  } else {
+    userCache.clear();
+  }
+}
+
+// Clean up expired cache entries periodically every 5 minutes
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, value] of userCache.entries()) {
+    if (now >= value.expiresAt) {
+      userCache.delete(key);
+    }
+  }
+}, 5 * 60 * 1000).unref?.();
+
+// Issue #3 fix: Re-validate role from DB/cache on every request
 // Issue #31 fix: Populate req.user.name for messaging
 const protect = async (req, res, next) => {
+  const authStart = process.hrtime.bigint();
   const authHeader = req.headers['authorization'];
   let token = authHeader && authHeader.split(' ')[1];
 
@@ -17,20 +43,38 @@ const protect = async (req, res, next) => {
 
   try {
     const decoded = verifyToken(token);
-    
+    const now = Date.now();
+    const cached = userCache.get(decoded.id);
+
+    if (cached && now < cached.expiresAt) {
+      req.user = cached.user;
+      const authDur = Number(process.hrtime.bigint() - authStart) / 1e6;
+      recordAuthDuration(authDur);
+      return next();
+    }
+
     // Fetch fresh user data from DB to get current role and name
     const dbUser = await User.findById(decoded.id);
     if (!dbUser) {
+      userCache.delete(decoded.id);
       return res.status(401).json({ message: 'User no longer exists' });
     }
 
-    // Overwrite token data with fresh DB data
-    req.user = {
+    const userData = {
       id: dbUser.id,
       role: dbUser.role,
       name: dbUser.name,
       email: dbUser.email
     };
+
+    userCache.set(decoded.id, {
+      user: userData,
+      expiresAt: now + USER_CACHE_TTL_MS
+    });
+
+    req.user = userData;
+    const authDur = Number(process.hrtime.bigint() - authStart) / 1e6;
+    recordAuthDuration(authDur);
     next();
   } catch (error) {
     return res.status(401).json({ message: 'Invalid or expired token' });
@@ -40,8 +84,8 @@ const protect = async (req, res, next) => {
 const authorize = (...roles) => {
   return async (req, res, next) => {
     try {
-      // Role is already fresh from DB via protect middleware
-      const userRole = req.user.role;
+      // Role is already fresh from DB/cache via protect middleware
+      const userRole = req.user?.role;
 
       if (!userRole || (!roles.includes(userRole) && userRole !== 'super_admin')) {
         return res.status(403).json({ 
@@ -59,5 +103,6 @@ const authorize = (...roles) => {
 module.exports = { 
   protect, 
   authorize,
-  authenticateToken: protect // Keep compatibility
+  authenticateToken: protect, // Keep compatibility
+  invalidateUserCache
 };

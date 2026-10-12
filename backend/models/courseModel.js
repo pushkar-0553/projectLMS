@@ -1,6 +1,14 @@
 const pool = require('../config/db');
 
+// In-memory cache for course slug lookups (10-minute TTL)
+const courseSlugCache = new Map();
+const COURSE_CACHE_TTL_MS = 10 * 60 * 1000;
+
 class Course {
+  static invalidateSlugCache() {
+    courseSlugCache.clear();
+  }
+
   static async getAll(includeInactive = false) {
     let query = 'SELECT * FROM Courses';
     if (!includeInactive) {
@@ -17,8 +25,19 @@ class Course {
   }
 
   static async findBySlug(slug) {
+    if (!slug) return null;
+    const key = String(slug).toLowerCase().trim();
+    const cached = courseSlugCache.get(key);
+    if (cached && Date.now() < cached.expiresAt) {
+      return cached.course;
+    }
+
     const [rows] = await pool.execute('SELECT * FROM Courses WHERE slug = ?', [slug]);
-    return rows[0] || null;
+    const course = rows[0] || null;
+    if (course) {
+      courseSlugCache.set(key, { course, expiresAt: Date.now() + COURSE_CACHE_TTL_MS });
+    }
+    return course;
   }
 
   static async findByCode(code) {
