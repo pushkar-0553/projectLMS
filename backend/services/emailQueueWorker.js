@@ -529,6 +529,31 @@ async function processEmailBatch(batchSize = 3) {
   return jobs.length;
 }
 
+let currentIntervalMs = 5000;
+const IDLE_INTERVAL_MS = 30000; // 30s when no jobs pending (preserves free-tier DB quota)
+const ACTIVE_INTERVAL_MS = 2000; // 2s when processing active queue
+
+function scheduleNextWorkerTick(delayMs) {
+  if (workerIntervalHandle) clearTimeout(workerIntervalHandle);
+  workerIntervalHandle = setTimeout(async () => {
+    try {
+      await processNextEmailJob();
+    } catch (e) {
+      console.error('[EMAIL WORKER TICK ERROR]', e.message);
+    }
+  }, delayMs);
+}
+
+/**
+ * Wake up worker immediately when new jobs are enqueued
+ */
+function wakeWorkerImmediately() {
+  if (workerIntervalHandle) clearTimeout(workerIntervalHandle);
+  setImmediate(() => {
+    processNextEmailJob().catch(e => console.warn('[EMAIL WORKER] Immediate wake error:', e.message));
+  });
+}
+
 /**
  * Worker tick: continuously processes queued email jobs until queue is empty
  */
@@ -536,9 +561,11 @@ async function processNextEmailJob() {
   if (isWorkerRunning) return;
   isWorkerRunning = true;
 
+  let totalProcessed = 0;
   try {
     while (true) {
       const processedCount = await processEmailBatch(3);
+      totalProcessed += processedCount;
       if (processedCount === 0) break;
       // Brief 50ms pause between batches
       await new Promise(r => setTimeout(r, 50));
@@ -547,16 +574,19 @@ async function processNextEmailJob() {
     console.error('[EMAIL WORKER ERROR]', err.message);
   } finally {
     isWorkerRunning = false;
+    // Adapt delay: if jobs were processed, poll again soon; if idle, back off to 30s
+    currentIntervalMs = totalProcessed > 0 ? ACTIVE_INTERVAL_MS : IDLE_INTERVAL_MS;
+    scheduleNextWorkerTick(currentIntervalMs);
   }
 }
 
 /**
  * Start background queue poller
  */
-function startEmailWorker(intervalMs = 3000) {
-  if (workerIntervalHandle) clearInterval(workerIntervalHandle);
-  workerIntervalHandle = setInterval(processNextEmailJob, intervalMs);
-  console.log(`[EMAIL WORKER] High-efficiency pooled email worker started (interval: ${intervalMs}ms).`);
+function startEmailWorker(initialIntervalMs = 5000) {
+  currentIntervalMs = initialIntervalMs;
+  scheduleNextWorkerTick(currentIntervalMs);
+  console.log(`[EMAIL WORKER] High-efficiency pooled email worker started (adaptive backoff: ${ACTIVE_INTERVAL_MS}ms active / ${IDLE_INTERVAL_MS}ms idle).`);
 }
 
 /**
@@ -631,9 +661,7 @@ async function retryFailedJobs(jobIds = []) {
   }
 
   // Trigger processing immediately in background
-  setTimeout(() => {
-    processNextEmailJob().catch(e => console.warn('[EMAIL WORKER] Immediate retry tick error:', e.message));
-  }, 100);
+  wakeWorkerImmediately();
 
   return { success: true, requeuedCount: result.affectedRows || 0 };
 }
@@ -644,6 +672,7 @@ module.exports = {
   trackEmailOpen,
   processNextEmailJob,
   startEmailWorker,
+  wakeWorkerImmediately,
   getEmailQueueStatus,
   retryFailedJobs,
   invalidateTransporterPool

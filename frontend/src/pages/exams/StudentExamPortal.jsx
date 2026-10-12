@@ -8,7 +8,7 @@ import AiAssistantPanel from '../../components/exams/AiAssistantPanel';
 import '../../styles/examSystem.css';
 import { 
   Shield, AlertTriangle, Clock, CheckCircle2, CloudCheck, WifiOff, 
-  ChevronLeft, ChevronRight, Send, AlertOctagon, Maximize2, Lock, FileText, Check,
+  ChevronLeft, ChevronRight, Send, AlertOctagon, Maximize2, Lock, FileText, Check, Copy,
   Code, Search, Bot, Sparkles, X, PanelRightClose, PanelRightOpen
 } from 'lucide-react';
 
@@ -102,7 +102,7 @@ export default function StudentExamPortal({ assignmentCode: propAssignmentCode }
     if (currentQ.question_type === 'CODE' && hasCode) {
       setActiveTool('CODE');
       setToolPanelOpen(true);
-    } else if (currentQ.question_type === 'MCQ') {
+    } else if (currentQ.question_type === 'MCQ' || currentQ.question_type === 'MULTI_SELECT') {
       setToolPanelOpen(false);
     }
   }, [currentQuestionIdx, currentSectionIdx, stage, examData]);
@@ -885,24 +885,135 @@ export default function StudentExamPortal({ assignmentCode: propAssignmentCode }
                     {/* Question Content */}
                     <div style={{ 
                       background: 'var(--bg-surface)', border: '1px solid var(--border-default)', borderRadius: 'var(--radius-lg)', 
-                      padding: '20px', marginBottom: '20px', fontSize: '15px', lineHeight: '1.6', whiteSpace: 'pre-wrap' 
+                      padding: '20px', marginBottom: '20px', fontSize: '15px', lineHeight: '1.6' 
                     }}>
-                      {currentQuestion.question_text}
+                      <div style={{ whiteSpace: 'pre-wrap' }}>
+                        {currentQuestion.question_text}
+                      </div>
+
+                      {/* Display Question Code Snippet (e.g. output prediction / question code) */}
+                      {currentQuestion.code_snippet && (
+                        <div style={{ marginTop: '16px', borderRadius: '8px', overflow: 'hidden', border: '1px solid #334155' }}>
+                          <div style={{
+                            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                            background: '#1e293b', padding: '6px 14px', borderBottom: '1px solid #334155'
+                          }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#94a3b8', fontSize: '12px', fontWeight: 600 }}>
+                              <Code size={14} color="#38bdf8" />
+                              <span style={{ color: '#f8fafc' }}>Code in Question</span>
+                              <span style={{
+                                fontSize: '10px', background: '#0f172a', color: '#38bdf8',
+                                padding: '2px 6px', borderRadius: '4px', textTransform: 'uppercase', fontWeight: 700
+                              }}>
+                                {currentQuestion.code_language || 'code'}
+                              </span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                navigator.clipboard?.writeText(currentQuestion.code_snippet);
+                                alert('Code snippet copied to clipboard!');
+                              }}
+                              className="btn btn-ghost btn-sm"
+                              style={{ padding: '2px 8px', fontSize: '11px', color: '#94a3b8', gap: '4px' }}
+                            >
+                              <Copy size={12} /> Copy
+                            </button>
+                          </div>
+                          <pre style={{
+                            background: '#090d16', color: '#38bdf8', padding: '14px 16px', margin: 0,
+                            fontFamily: 'Consolas, Monaco, "Courier New", monospace', fontSize: '13.5px',
+                            lineHeight: '1.5', overflowX: 'auto', whiteSpace: 'pre'
+                          }}>
+                            <code>{currentQuestion.code_snippet}</code>
+                          </pre>
+                        </div>
+                      )}
                     </div>
 
                     {/* Answer Input Area */}
                     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', marginBottom: '16px' }}>
                       <label className="label" style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
-                        <span>Written Answer / Solution Notes:</span>
+                        <span>
+                          {currentQuestion.question_type === 'MULTI_SELECT'
+                            ? 'Multiple Choice (Select all correct answers):'
+                            : currentQuestion.question_type === 'MCQ'
+                            ? 'Select Your Answer:'
+                            : 'Written Answer / Solution Notes:'}
+                        </span>
                         <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
                           Autosaving continuously to device vault
                         </span>
                       </label>
 
-                      {currentQuestion.question_type === 'MCQ' ? (
+                      {currentQuestion.question_type === 'MULTI_SELECT' ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                          <div style={{ fontSize: '12px', color: '#3b82f6', fontWeight: 600, marginBottom: '2px' }}>
+                            ☑ You may select more than one option. Click each choice to toggle it.
+                          </div>
+                          {(() => {
+                            let selectedList = [];
+                            try {
+                              if (Array.isArray(currentAnswer.option)) {
+                                selectedList = currentAnswer.option;
+                              } else if (typeof currentAnswer.option === 'string' && currentAnswer.option) {
+                                const parsed = JSON.parse(currentAnswer.option);
+                                selectedList = Array.isArray(parsed) ? parsed : [currentAnswer.option];
+                              }
+                            } catch (e) {
+                              selectedList = currentAnswer.option ? [currentAnswer.option] : [];
+                            }
+
+                            return (currentQuestion.options || []).map((opt, oIdx) => {
+                              const isSelected = selectedList.includes(opt);
+                              const optLetter = String.fromCharCode(65 + oIdx);
+
+                              const toggleChoice = () => {
+                                const nextList = isSelected
+                                  ? selectedList.filter(o => o !== opt)
+                                  : [...selectedList, opt];
+                                handleAnswerChange(currentQuestion.id, undefined, JSON.stringify(nextList), undefined, undefined);
+                              };
+
+                              return (
+                                <div
+                                  key={oIdx}
+                                  onClick={toggleChoice}
+                                  style={{
+                                    background: isSelected ? 'rgba(99, 102, 241, 0.12)' : 'var(--bg-surface)',
+                                    border: `2px solid ${isSelected ? 'var(--primary)' : 'var(--border-default)'}`,
+                                    borderRadius: 'var(--radius-md)',
+                                    padding: '12px 16px',
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '12px',
+                                    transition: 'all 0.15s ease'
+                                  }}
+                                >
+                                  <div style={{
+                                    width: '18px', height: '18px', borderRadius: '4px',
+                                    border: `2px solid ${isSelected ? 'var(--primary)' : 'var(--border-default)'}`,
+                                    background: isSelected ? 'var(--primary)' : 'transparent',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    color: '#ffffff', flexShrink: 0
+                                  }}>
+                                    {isSelected && <Check size={12} strokeWidth={3} />}
+                                  </div>
+                                  <span style={{ fontWeight: 800, fontSize: '14px', color: isSelected ? 'var(--primary)' : 'var(--text-muted)' }}>
+                                    {optLetter}.
+                                  </span>
+                                  <span style={{ fontSize: '14px' }}>{opt}</span>
+                                </div>
+                              );
+                            });
+                          })()}
+                        </div>
+                      ) : currentQuestion.question_type === 'MCQ' ? (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                           {(currentQuestion.options || []).map((opt, oIdx) => {
                             const isSelected = currentAnswer.option === opt;
+                            const optLetter = String.fromCharCode(65 + oIdx);
                             return (
                               <div
                                 key={oIdx}
@@ -922,10 +1033,14 @@ export default function StudentExamPortal({ assignmentCode: propAssignmentCode }
                                 <div style={{
                                   width: '18px', height: '18px', borderRadius: '50%',
                                   border: `2px solid ${isSelected ? 'var(--primary)' : 'var(--border-default)'}`,
-                                  display: 'flex', alignItems: 'center', justifyContent: 'center'
+                                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                  flexShrink: 0
                                 }}>
                                   {isSelected && <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--primary)' }} />}
                                 </div>
+                                <span style={{ fontWeight: 800, fontSize: '14px', color: isSelected ? 'var(--primary)' : 'var(--text-muted)' }}>
+                                  {optLetter}.
+                                </span>
                                 <span style={{ fontSize: '14px' }}>{opt}</span>
                               </div>
                             );

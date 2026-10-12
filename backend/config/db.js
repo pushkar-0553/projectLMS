@@ -9,8 +9,10 @@ const dbConfig = {
   password: process.env.DB_PASSWORD,
   database: process.env.DB_NAME,
   waitForConnections: true,
-  connectionLimit: 15, // Increased from 10
-  queueLimit: 0,
+  connectionLimit: 12, // Tuned for free-tier cloud DB connection limits
+  maxIdle: 8,          // Actively reclaim idle connections to prevent connection starvation
+  idleTimeout: 30000,  // Close idle connection after 30s
+  queueLimit: 100,     // Guard against unbounded queue memory leak during connection stalls
   enableKeepAlive: true,
   keepAliveInitialDelay: 10000,
   connectTimeout: 20000,
@@ -18,5 +20,10 @@ const dbConfig = {
 };
 
 const pool = mysql.createPool(dbConfig);
+
+// Pool diagnostics to track unexpected disconnects
+pool.on?.('error', (err) => {
+  console.error('[DB POOL ERROR]', err.code || err.message);
+});
 
 module.exports = pool;

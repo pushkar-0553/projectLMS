@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { examApi as api } from '../../services/examApi';
 import { 
   CheckSquare, Award, Clock, AlertTriangle, ChevronRight, 
-  ChevronLeft, Save, CheckCircle, FileText, Send, User, Copy
+  ChevronLeft, Save, CheckCircle, FileText, Send, User, Copy, Code
 } from 'lucide-react';
 
 export default function EvaluationView({ courseId, courseSlug }) {
@@ -276,11 +276,45 @@ export default function EvaluationView({ courseId, courseSlug }) {
                           {q.questionText}
                         </div>
 
+                        {/* Question Code Snippet (if provided) */}
+                        {q.codeSnippet && (
+                          <div style={{ marginBottom: '16px', borderRadius: '6px', overflow: 'hidden', border: '1px solid #334155' }}>
+                            <div style={{ background: '#1e293b', padding: '5px 12px', display: 'flex', alignItems: 'center', gap: '6px', color: '#94a3b8', fontSize: '12px' }}>
+                              <Code size={13} color="#38bdf8" />
+                              <span style={{ color: '#f8fafc', fontWeight: 600 }}>Problem Code Snippet</span>
+                              {q.codeLanguage && (
+                                <span style={{ fontSize: '10px', background: '#0f172a', color: '#38bdf8', padding: '1px 5px', borderRadius: '3px', textTransform: 'uppercase' }}>
+                                  {q.codeLanguage}
+                                </span>
+                              )}
+                            </div>
+                            <pre style={{
+                              background: '#090d16', color: '#38bdf8', padding: '12px 14px', margin: 0,
+                              fontFamily: 'Consolas, Monaco, monospace', fontSize: '13px', lineHeight: '1.5',
+                              overflowX: 'auto', whiteSpace: 'pre'
+                            }}>
+                              <code>{q.codeSnippet}</code>
+                            </pre>
+                          </div>
+                        )}
+
                         {/* Answer Key / Solution Guide */}
                         {q.answerKey && (
                           <div style={{ background: 'rgba(99, 102, 241, 0.08)', borderLeft: '3px solid var(--primary)', padding: '10px 14px', borderRadius: '4px', fontSize: '13px', marginBottom: '16px' }}>
-                            <strong style={{ color: 'var(--primary)', display: 'block', marginBottom: '4px' }}>Answer Key:</strong>
-                            <div style={{ color: 'var(--text-secondary)' }}>{q.answerKey}</div>
+                            <strong style={{ color: 'var(--primary)', display: 'block', marginBottom: '4px' }}>
+                              Answer Key {q.questionType === 'MULTI_SELECT' ? '(Multiple Correct Choices)' : ''}:
+                            </strong>
+                            <div style={{ color: 'var(--text-secondary)' }}>
+                              {(() => {
+                                if (q.questionType === 'MULTI_SELECT') {
+                                  try {
+                                    const parsed = JSON.parse(q.answerKey);
+                                    if (Array.isArray(parsed)) return parsed.join('  |  ');
+                                  } catch (e) {}
+                                }
+                                return q.answerKey;
+                              })()}
+                            </div>
                           </div>
                         )}
 
@@ -330,7 +364,28 @@ export default function EvaluationView({ courseId, courseSlug }) {
 
                           {(!q.codeContent || (q.studentAnswer && q.studentAnswer !== q.codeContent)) && (
                             <div style={{ fontSize: '14px', whiteSpace: 'pre-wrap', color: q.studentAnswer ? 'var(--text-primary)' : 'var(--text-muted)' }}>
-                              {q.studentAnswer || '(No answer provided by candidate)'}
+                              {(() => {
+                                if (!q.studentAnswer) return '(No answer provided by candidate)';
+                                if (q.questionType === 'MULTI_SELECT') {
+                                  try {
+                                    const parsed = JSON.parse(q.studentAnswer);
+                                    if (Array.isArray(parsed)) {
+                                      return (
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '4px' }}>
+                                          <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)' }}>Selected Choices:</div>
+                                          {parsed.map((item, idx) => (
+                                            <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#f1f5f9', padding: '4px 8px', borderRadius: '4px', width: 'fit-content' }}>
+                                              <span>☑</span>
+                                              <strong>{item}</strong>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      );
+                                    }
+                                  } catch (e) {}
+                                }
+                                return q.studentAnswer;
+                              })()}
                             </div>
                           )}
                         </div>

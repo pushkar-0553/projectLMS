@@ -415,23 +415,44 @@ const userController = {
 
       const insertedCount = await User.bulkCreate(hashedStudents);
 
-      // Fetch newly created users and enroll in CourseMemberships & StudentBatchMap
+      // Fetch newly created users and enroll in CourseMemberships & StudentBatchMap via consolidated batch queries
       const [createdUsers] = await pool.query('SELECT id, email, batch FROM Users WHERE email IN (?)', [newStudentsData.map(s => s.email)]);
-      for (const u of createdUsers) {
+      
+      if (createdUsers.length > 0) {
+        // 1. Bulk enroll all created users in CourseMemberships (1 roundtrip)
+        const memberPlaceholders = createdUsers.map(() => '(?, ?, "student", "active")').join(', ');
+        const memberParams = createdUsers.flatMap(u => [targetCourseId, u.id]);
         await pool.execute(
-          'INSERT IGNORE INTO CourseMemberships (course_id, user_id, role, status) VALUES (?, ?, "student", "active")',
-          [targetCourseId, u.id]
+          `INSERT IGNORE INTO CourseMemberships (course_id, user_id, role, status) VALUES ${memberPlaceholders}`,
+          memberParams
         );
-        if (u.batch) {
-          let batchId = parseInt(u.batch, 10);
-          if (isNaN(batchId)) {
-            const [bRows] = await pool.execute('SELECT id FROM Batches WHERE name = ? AND course_id = ? LIMIT 1', [u.batch, targetCourseId]);
-            if (bRows.length > 0) batchId = bRows[0].id;
+
+        // 2. Resolve batches in 1 roundtrip
+        const usersWithBatch = createdUsers.filter(u => u.batch);
+        if (usersWithBatch.length > 0) {
+          const [batchRows] = await pool.execute('SELECT id, name FROM Batches WHERE course_id = ?', [targetCourseId]);
+          const batchMap = new Map();
+          for (const b of batchRows) {
+            batchMap.set(String(b.id), b.id);
+            if (b.name) batchMap.set(b.name.toLowerCase().trim(), b.id);
           }
-          if (batchId && !isNaN(batchId)) {
+
+          const studentBatchPairs = [];
+          for (const u of usersWithBatch) {
+            const rawBatch = String(u.batch).trim();
+            const resolvedId = batchMap.get(rawBatch.toLowerCase()) || (parseInt(rawBatch, 10) || null);
+            if (resolvedId && !isNaN(resolvedId)) {
+              studentBatchPairs.push([u.id, resolvedId]);
+            }
+          }
+
+          // 3. Bulk map into StudentBatchMap (1 roundtrip)
+          if (studentBatchPairs.length > 0) {
+            const sbmPlaceholders = studentBatchPairs.map(() => '(?, ?)').join(', ');
+            const sbmParams = studentBatchPairs.flatMap(pair => pair);
             await pool.execute(
-              'INSERT IGNORE INTO StudentBatchMap (student_id, batch_id) VALUES (?, ?)',
-              [u.id, batchId]
+              `INSERT IGNORE INTO StudentBatchMap (student_id, batch_id) VALUES ${sbmPlaceholders}`,
+              sbmParams
             );
           }
         }

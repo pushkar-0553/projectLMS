@@ -126,19 +126,22 @@ async function createPaper(data, userId) {
 
         await connection.query(`
           INSERT INTO exam_questions 
-            (section_id, question_bank_id, question_order, question_type, difficulty, question_text, options_json, answer_key, explanation, marks, attachment_url, capabilities_override)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (section_id, question_bank_id, question_order, question_type, difficulty, question_text, code_snippet, options_json, answer_key, explanation, marks, code_language, code_template, attachment_url, capabilities_override)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `, [
           sectionId,
           q.questionBankId || null,
           qIdx + 1,
-          q.questionType || 'WRITTEN',
+          q.questionType || q.question_type || 'WRITTEN',
           q.difficulty || 'MEDIUM',
-          q.questionText || '',
+          q.questionText || q.question_text || '',
+          q.codeSnippet || q.code_snippet || null,
           optionsJson,
-          q.answerKey || '',
+          q.answerKey || q.answer_key || '',
           q.explanation || '',
           parseFloat(q.marks || 5),
+          q.codeLanguage || q.code_language || null,
+          q.codeTemplate || q.code_template || null,
           q.attachmentUrl || null,
           capsOverride
         ]);
@@ -336,19 +339,22 @@ async function createNewVersion(paperId, data, userId) {
 
         await connection.query(`
           INSERT INTO exam_questions 
-            (section_id, question_bank_id, question_order, question_type, difficulty, question_text, options_json, answer_key, explanation, marks, attachment_url, capabilities_override)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (section_id, question_bank_id, question_order, question_type, difficulty, question_text, code_snippet, options_json, answer_key, explanation, marks, code_language, code_template, attachment_url, capabilities_override)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `, [
           sectionId,
           q.questionBankId || null,
           qIdx + 1,
-          q.questionType || 'WRITTEN',
+          q.questionType || q.question_type || 'WRITTEN',
           q.difficulty || 'MEDIUM',
-          q.questionText || '',
+          q.questionText || q.question_text || '',
+          q.codeSnippet || q.code_snippet || null,
           optionsJson,
-          q.answerKey || '',
+          q.answerKey || q.answer_key || '',
           q.explanation || '',
           parseFloat(q.marks || 5),
+          q.codeLanguage || q.code_language || null,
+          q.codeTemplate || q.code_template || null,
           q.attachmentUrl || null,
           capsOverride
         ]);
@@ -520,14 +526,15 @@ async function updatePaper(paperId, data, userId) {
 
         await connection.query(`
           INSERT INTO exam_questions 
-            (section_id, question_order, question_type, difficulty, question_text, options_json, answer_key, explanation, marks, code_language, code_template, capabilities_override)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (section_id, question_order, question_type, difficulty, question_text, code_snippet, options_json, answer_key, explanation, marks, code_language, code_template, capabilities_override)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `, [
           sectionId,
           qIdx + 1,
           q.questionType || q.question_type || 'WRITTEN',
           q.difficulty || 'MEDIUM',
           q.questionText || q.question_text || '',
+          q.codeSnippet || q.code_snippet || null,
           optionsJson,
           q.answerKey || q.answer_key || null,
           q.explanation || null,

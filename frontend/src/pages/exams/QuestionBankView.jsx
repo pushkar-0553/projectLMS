@@ -165,7 +165,8 @@ export default function QuestionBankView() {
                     >
                       <option value="WRITTEN">Written Answer</option>
                       <option value="SHORT_ANSWER">Short Answer</option>
-                      <option value="MCQ">Multiple Choice</option>
+                      <option value="MCQ">Multiple Choice (Single)</option>
+                      <option value="MULTI_SELECT">Multiple Select</option>
                       <option value="CODE">Code Writing</option>
                     </select>
                   </div>

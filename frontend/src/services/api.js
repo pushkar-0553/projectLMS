@@ -71,6 +71,34 @@ api.interceptors.response.use(
   }
 );
 
+// High-Performance In-Flight Request Deduplication
+// Merges simultaneous identical GET requests into a single network roundtrip
+const inFlightRequests = new Map();
+const originalGet = api.get.bind(api);
+
+api.get = function (url, config = {}) {
+  if (config?.skipDedupe) {
+    return originalGet(url, config);
+  }
+
+  const token = sessionStorage.getItem('token') || localStorage.getItem('token') || '';
+  const slug = sessionStorage.getItem('activeCourseSlug') || localStorage.getItem('activeCourseSlug') || '';
+  const paramsKey = config?.params ? JSON.stringify(config.params) : '';
+  const dedupeKey = `${url}::${paramsKey}::${slug}::${token}`;
+
+  if (inFlightRequests.has(dedupeKey)) {
+    return inFlightRequests.get(dedupeKey);
+  }
+
+  const requestPromise = originalGet(url, config)
+    .finally(() => {
+      inFlightRequests.delete(dedupeKey);
+    });
+
+  inFlightRequests.set(dedupeKey, requestPromise);
+  return requestPromise;
+};
+
 export const authAPI = {
   login: (email, password) => api.post('/auth/login', { email, password }),
   register: (name, email, password) => api.post('/auth/register', { name, email, password }),

@@ -228,7 +228,10 @@ exports.getStudents = async (req, res) => {
   try {
     const Course = require('../models/courseModel');
     const courseId = await Course.resolveCourseId(req);
-    const students = await User.findByRole('student', courseId);
+    const limit = req.query.limit ? parseInt(req.query.limit, 10) : null;
+    const page = parseInt(req.query.page, 10) || 1;
+    const offset = req.query.offset !== undefined ? parseInt(req.query.offset, 10) : (limit ? (page - 1) * limit : 0);
+    const students = await User.findByRole('student', courseId, limit, offset);
     res.json(students);
   } catch (error) {
     console.error('Error fetching students:', error);

@@ -41,10 +41,13 @@ export default function PapersView({ onAssignPaper, courseId }) {
             difficulty: 'MEDIUM',
             marks: 10,
             questionText: 'Explain the difference between mutable and immutable objects in Python with code examples.',
-            options: ['Option A', 'Option B', 'Option C', 'Option D'],
+            codeSnippet: '',
+            codeLanguage: 'python',
+            hasCodeSnippet: false,
+            options: ['', '', '', ''],
+            correctOptionIndices: [0],
             answerKey: 'Mutable objects can be modified in-place (lists, dicts). Immutable objects cannot be changed (int, str, tuple).',
             explanation: 'Full marks for clear explanation and memory reference rationale.',
-            codeLanguage: 'python',
             codeTemplate: '# Write your solution below\ndef solution():\n    pass\n',
             capabilities_override: null
           }
@@ -129,19 +132,43 @@ export default function PapersView({ onAssignPaper, courseId }) {
         description: sec.description || '',
         instructions: sec.instructions || '',
         default_capabilities: Array.isArray(sec.default_capabilities) ? sec.default_capabilities : ['CODE_EDITOR'],
-        questions: (sec.questions || []).map((q, qIdx) => ({
-          questionOrder: q.question_order || qIdx + 1,
-          questionType: q.question_type || 'WRITTEN',
-          difficulty: q.difficulty || 'MEDIUM',
-          marks: q.marks || 1,
-          questionText: q.question_text || '',
-          options: Array.isArray(q.options) ? q.options : ['Option A', 'Option B', 'Option C', 'Option D'],
-          answerKey: q.answer_key || '',
-          explanation: q.explanation || '',
-          codeLanguage: q.code_language || 'python',
-          codeTemplate: q.code_template || '# Write your solution below\n',
-          capabilities_override: q.capabilities_override || null
-        }))
+        questions: (sec.questions || []).map((q, qIdx) => {
+          const parsedOptions = Array.isArray(q.options) && q.options.length > 0 
+            ? q.options 
+            : ['', '', '', ''];
+          let correctOptionIndices = [0];
+          if (q.question_type === 'MULTI_SELECT') {
+            try {
+              const parsedKeys = JSON.parse(q.answer_key || '[]');
+              if (Array.isArray(parsedKeys)) {
+                correctOptionIndices = parsedKeys.map(k => parsedOptions.indexOf(k)).filter(i => i !== -1);
+              }
+            } catch (e) {
+              correctOptionIndices = [0];
+            }
+            if (correctOptionIndices.length === 0) correctOptionIndices = [0];
+          } else if (q.question_type === 'MCQ') {
+            const mIdx = parsedOptions.indexOf(q.answer_key);
+            correctOptionIndices = mIdx !== -1 ? [mIdx] : [0];
+          }
+
+          return {
+            questionOrder: q.question_order || qIdx + 1,
+            questionType: q.question_type || 'WRITTEN',
+            difficulty: q.difficulty || 'MEDIUM',
+            marks: q.marks || 1,
+            questionText: q.question_text || '',
+            codeSnippet: q.code_snippet || '',
+            codeLanguage: q.code_language || 'python',
+            hasCodeSnippet: Boolean(q.code_snippet),
+            options: parsedOptions,
+            answerKey: q.answer_key || '',
+            correctOptionIndices,
+            explanation: q.explanation || '',
+            codeTemplate: q.code_template || '# Write your solution below\n',
+            capabilities_override: q.capabilities_override || null
+          };
+        })
       }));
 
       setFormData({
@@ -202,10 +229,13 @@ export default function PapersView({ onAssignPaper, courseId }) {
               difficulty: 'MEDIUM',
               marks: 5,
               questionText: '',
-              options: ['Option A', 'Option B', 'Option C', 'Option D'],
+              codeSnippet: '',
+              codeLanguage: 'python',
+              hasCodeSnippet: false,
+              options: ['', '', '', ''],
+              correctOptionIndices: [0],
               answerKey: '',
               explanation: '',
-              codeLanguage: 'python',
               codeTemplate: '# Write your solution below\n',
               capabilities_override: null
             }
@@ -238,10 +268,13 @@ export default function PapersView({ onAssignPaper, courseId }) {
               difficulty: 'MEDIUM',
               marks: 5,
               questionText: '',
-              options: ['Option A', 'Option B', 'Option C', 'Option D'],
+              codeSnippet: '',
+              codeLanguage: 'python',
+              hasCodeSnippet: false,
+              options: ['', '', '', ''],
+              correctOptionIndices: [0],
               answerKey: '',
               explanation: '',
-              codeLanguage: 'python',
               codeTemplate: '# Write your solution below\n',
               capabilities_override: null
             }
@@ -274,13 +307,18 @@ export default function PapersView({ onAssignPaper, courseId }) {
         const updatedQuestions = sec.questions.map((q, j) => {
           if (j !== qIdx) return q;
           const updatedQ = { ...q, [field]: val };
-          // If switching to MCQ and options not initialized
-          if (field === 'questionType' && val === 'MCQ') {
+          // If switching to MCQ or MULTI_SELECT and options not initialized
+          if (field === 'questionType' && (val === 'MCQ' || val === 'MULTI_SELECT')) {
             if (!updatedQ.options || !Array.isArray(updatedQ.options) || updatedQ.options.length === 0) {
-              updatedQ.options = ['Option A', 'Option B', 'Option C', 'Option D'];
+              updatedQ.options = ['', '', '', ''];
             }
-            if (!updatedQ.answerKey) {
-              updatedQ.answerKey = updatedQ.options[0];
+            if (!updatedQ.correctOptionIndices || updatedQ.correctOptionIndices.length === 0) {
+              updatedQ.correctOptionIndices = [0];
+            }
+            if (val === 'MULTI_SELECT') {
+              updatedQ.answerKey = JSON.stringify(updatedQ.correctOptionIndices.map(idx => updatedQ.options[idx]).filter(Boolean));
+            } else {
+              updatedQ.answerKey = updatedQ.options[updatedQ.correctOptionIndices[0]] || '';
             }
           }
           // If switching to CODE, ensure codeLanguage and template exist
@@ -305,14 +343,20 @@ export default function PapersView({ onAssignPaper, courseId }) {
         if (i !== sIdx) return sec;
         const updatedQuestions = sec.questions.map((q, j) => {
           if (j !== qIdx) return q;
-          const curOptions = Array.isArray(q.options) ? [...q.options] : ['Option A', 'Option B', 'Option C', 'Option D'];
-          const oldVal = curOptions[optIdx];
+          const curOptions = Array.isArray(q.options) ? [...q.options] : ['', '', '', ''];
           curOptions[optIdx] = text;
-          // If answerKey was this option, update answerKey as well
+          
+          const isMulti = q.questionType === 'MULTI_SELECT';
+          const correctIndices = Array.isArray(q.correctOptionIndices) ? q.correctOptionIndices : [0];
+          
           let nextAnswerKey = q.answerKey;
-          if (nextAnswerKey === oldVal) {
-            nextAnswerKey = text;
+          if (isMulti) {
+            nextAnswerKey = JSON.stringify(correctIndices.map(idx => curOptions[idx]).filter(Boolean));
+          } else {
+            const chosenIdx = correctIndices[0] !== undefined ? correctIndices[0] : 0;
+            nextAnswerKey = curOptions[chosenIdx] || '';
           }
+
           return { ...q, options: curOptions, answerKey: nextAnswerKey };
         });
         return { ...sec, questions: updatedQuestions };
@@ -329,8 +373,7 @@ export default function PapersView({ onAssignPaper, courseId }) {
           if (j !== qIdx) return q;
           const curOptions = Array.isArray(q.options) ? [...q.options] : [];
           if (curOptions.length >= 8) return q;
-          const nextLetter = String.fromCharCode(65 + curOptions.length);
-          curOptions.push(`Option ${nextLetter}`);
+          curOptions.push('');
           return { ...q, options: curOptions };
         });
         return { ...sec, questions: updatedQuestions };
@@ -350,13 +393,26 @@ export default function PapersView({ onAssignPaper, courseId }) {
             alert('Multiple choice questions require at least 2 options.');
             return q;
           }
-          const removedVal = curOptions[optIdx];
           const newOptions = curOptions.filter((_, idx) => idx !== optIdx);
-          let nextAnswerKey = q.answerKey;
-          if (nextAnswerKey === removedVal) {
-            nextAnswerKey = newOptions[0] || '';
+          const isMulti = q.questionType === 'MULTI_SELECT';
+          let correctIndices = Array.isArray(q.correctOptionIndices) ? [...q.correctOptionIndices] : [0];
+          
+          correctIndices = correctIndices
+            .filter(idx => idx !== optIdx)
+            .map(idx => (idx > optIdx ? idx - 1 : idx));
+          
+          if (correctIndices.length === 0) {
+            correctIndices = [0];
           }
-          return { ...q, options: newOptions, answerKey: nextAnswerKey };
+
+          let nextAnswerKey = '';
+          if (isMulti) {
+            nextAnswerKey = JSON.stringify(correctIndices.map(idx => newOptions[idx]).filter(Boolean));
+          } else {
+            nextAnswerKey = newOptions[correctIndices[0]] || '';
+          }
+
+          return { ...q, options: newOptions, correctOptionIndices: correctIndices, answerKey: nextAnswerKey };
         });
         return { ...sec, questions: updatedQuestions };
       });
@@ -364,13 +420,42 @@ export default function PapersView({ onAssignPaper, courseId }) {
     });
   };
 
-  const selectCorrectMcqOption = (sIdx, qIdx, optText) => {
+  const selectCorrectMcqOption = (sIdx, qIdx, optIdx) => {
     setFormData(prev => {
       const updatedSecs = prev.sections.map((sec, i) => {
         if (i !== sIdx) return sec;
         const updatedQuestions = sec.questions.map((q, j) => {
           if (j !== qIdx) return q;
-          return { ...q, answerKey: optText };
+          const curOptions = Array.isArray(q.options) ? q.options : [];
+          const chosenText = curOptions[optIdx] || '';
+          return { ...q, correctOptionIndices: [optIdx], answerKey: chosenText };
+        });
+        return { ...sec, questions: updatedQuestions };
+      });
+      return { ...prev, sections: updatedSecs };
+    });
+  };
+
+  const toggleCorrectMultiSelectOption = (sIdx, qIdx, optIdx) => {
+    setFormData(prev => {
+      const updatedSecs = prev.sections.map((sec, i) => {
+        if (i !== sIdx) return sec;
+        const updatedQuestions = sec.questions.map((q, j) => {
+          if (j !== qIdx) return q;
+          const curIndices = Array.isArray(q.correctOptionIndices) ? [...q.correctOptionIndices] : [];
+          let nextIndices;
+          if (curIndices.includes(optIdx)) {
+            if (curIndices.length <= 1) {
+              alert('Multiple select questions must have at least one correct option.');
+              return q;
+            }
+            nextIndices = curIndices.filter(i => i !== optIdx);
+          } else {
+            nextIndices = [...curIndices, optIdx].sort((a, b) => a - b);
+          }
+          const curOptions = Array.isArray(q.options) ? q.options : [];
+          const nextAnswerKey = JSON.stringify(nextIndices.map(i => curOptions[i]).filter(Boolean));
+          return { ...q, correctOptionIndices: nextIndices, answerKey: nextAnswerKey };
         });
         return { ...sec, questions: updatedQuestions };
       });
@@ -440,6 +525,32 @@ export default function PapersView({ onAssignPaper, courseId }) {
     if (!formData.subject.trim()) {
       alert('Please enter a subject / topic.');
       return;
+    }
+
+    // Validate sections and questions
+    for (let sIdx = 0; sIdx < formData.sections.length; sIdx++) {
+      const sec = formData.sections[sIdx];
+      for (let qIdx = 0; qIdx < (sec.questions || []).length; qIdx++) {
+        const q = sec.questions[qIdx];
+        if (!q.questionText || !q.questionText.trim()) {
+          alert(`Please enter a question description for ${sec.title || 'Section'} - Question #${qIdx + 1}.`);
+          return;
+        }
+        if (q.questionType === 'MCQ' || q.questionType === 'MULTI_SELECT') {
+          const filledOptions = (q.options || []).filter(opt => opt && String(opt).trim() !== '');
+          if (filledOptions.length < 2) {
+            alert(`Question #${qIdx + 1} in ${sec.title || 'Section'} is a multiple choice question and requires at least 2 filled options.`);
+            return;
+          }
+          if (q.questionType === 'MULTI_SELECT') {
+            const hasCorrect = (q.correctOptionIndices || []).length > 0;
+            if (!hasCorrect) {
+              alert(`Please mark at least one correct choice for Multiple Select Question #${qIdx + 1}.`);
+              return;
+            }
+          }
+        }
+      }
     }
 
     setSaving(true);
@@ -777,11 +888,12 @@ export default function PapersView({ onAssignPaper, courseId }) {
                                 value={q.questionType}
                                 onChange={(e) => updateQuestion(sIdx, qIdx, 'questionType', e.target.value)}
                                 className="select"
-                                style={{ padding: '6px 10px', fontSize: '13px', width: '160px', fontWeight: 600 }}
+                                style={{ padding: '6px 10px', fontSize: '13px', width: '210px', fontWeight: 600 }}
                               >
                                 <option value="WRITTEN">Written Answer</option>
                                 <option value="SHORT_ANSWER">Short Answer</option>
-                                <option value="MCQ">Multiple Choice (MCQ)</option>
+                                <option value="MCQ">Multiple Choice (Single Answer)</option>
+                                <option value="MULTI_SELECT">Multiple Choice (Multiple Answers)</option>
                                 <option value="CODE">Code Writing</option>
                               </select>
 
@@ -825,7 +937,7 @@ export default function PapersView({ onAssignPaper, courseId }) {
                               name={`qText_${sIdx}_${qIdx}`}
                               value={q.questionText}
                               onChange={(e) => updateQuestion(sIdx, qIdx, 'questionText', e.target.value)}
-                              placeholder="Type question prompt, requirements, or problem statement here..."
+                              placeholder="Type question prompt, requirements, or problem statement here... (e.g., 'What is the output of the given code?')"
                               className="textarea"
                               style={{ minHeight: '80px', fontSize: '14px' }}
                               required
@@ -833,26 +945,159 @@ export default function PapersView({ onAssignPaper, courseId }) {
                           </div>
 
                           {/* =========================================================
-                              TYPE-SPECIFIC CONTROL 1: MULTIPLE CHOICE QUESTION (MCQ)
+                              CODE SNIPPET IN QUESTION (Output Prediction / Problem Code)
                               ========================================================= */}
-                          {q.questionType === 'MCQ' && (
+                          <div style={{ marginBottom: '14px' }}>
+                            {(q.hasCodeSnippet || (q.codeSnippet !== undefined && q.codeSnippet !== null && q.codeSnippet !== '')) ? (
+                              <div style={{
+                                background: '#0f172a',
+                                border: '1px solid #334155',
+                                borderRadius: 'var(--radius-md)',
+                                padding: '14px',
+                                boxShadow: '0 2px 6px rgba(0,0,0,0.12)'
+                              }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', flexWrap: 'wrap', gap: '8px' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#38bdf8', fontSize: '13px', fontWeight: 700 }}>
+                                    <Code size={16} /> Code in Question (Problem / Output Prediction Snippet)
+                                  </div>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <label style={{ fontSize: '12px', color: '#94a3b8', fontWeight: 600 }}>Language:</label>
+                                    <select
+                                      value={q.codeLanguage || 'python'}
+                                      onChange={(e) => updateQuestion(sIdx, qIdx, 'codeLanguage', e.target.value)}
+                                      className="select"
+                                      style={{ padding: '3px 8px', fontSize: '12px', background: '#1e293b', color: '#f8fafc', border: '1px solid #475569' }}
+                                    >
+                                      <option value="python">Python</option>
+                                      <option value="javascript">JavaScript</option>
+                                      <option value="java">Java</option>
+                                      <option value="cpp">C++</option>
+                                      <option value="c">C</option>
+                                      <option value="sql">SQL</option>
+                                      <option value="html">HTML/CSS</option>
+                                      <option value="text">Plain Text</option>
+                                    </select>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        updateQuestion(sIdx, qIdx, 'codeSnippet', '');
+                                        updateQuestion(sIdx, qIdx, 'hasCodeSnippet', false);
+                                      }}
+                                      className="btn btn-ghost btn-sm"
+                                      style={{ color: '#f87171', padding: '2px 8px', fontSize: '12px' }}
+                                      title="Remove code snippet"
+                                    >
+                                      &times; Remove Code
+                                    </button>
+                                  </div>
+                                </div>
+                                <textarea
+                                  value={q.codeSnippet || ''}
+                                  onChange={(e) => updateQuestion(sIdx, qIdx, 'codeSnippet', e.target.value)}
+                                  placeholder={"// Enter or paste the code snippet to be analyzed/evaluated here\n// e.g.:\ndef find_output(arr, k):\n    return [x * 2 for x in arr if x > k]\n\nprint(find_output([1, 4, 2, 5], 2))"}
+                                  className="textarea"
+                                  style={{
+                                    fontFamily: 'Consolas, Monaco, "Courier New", monospace',
+                                    fontSize: '13px',
+                                    background: '#020617',
+                                    color: '#38bdf8',
+                                    border: '1px solid #1e293b',
+                                    minHeight: '110px',
+                                    lineHeight: '1.5',
+                                    whiteSpace: 'pre'
+                                  }}
+                                />
+                                <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '6px' }}>
+                                  💡 This code block will be rendered with syntax styling directly below the question statement for candidates.
+                                </div>
+                              </div>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  updateQuestion(sIdx, qIdx, 'hasCodeSnippet', true);
+                                  if (!q.codeLanguage) updateQuestion(sIdx, qIdx, 'codeLanguage', 'python');
+                                }}
+                                className="btn btn-secondary btn-sm"
+                                style={{ gap: '6px', fontSize: '12px', background: '#f8fafc', border: '1px dashed #94a3b8', color: '#334155' }}
+                              >
+                                <Code size={14} color="#2563eb" /> + Add Code Snippet to Question (e.g. "What is the output of the given code?")
+                              </button>
+                            )}
+                          </div>
+
+                          {/* =========================================================
+                              TYPE-SPECIFIC CONTROL 1: MULTIPLE CHOICE QUESTION (MCQ & MULTI_SELECT)
+                              ========================================================= */}
+                          {(q.questionType === 'MCQ' || q.questionType === 'MULTI_SELECT') && (
                             <div style={{ 
                               background: '#eff6ff', border: '1px solid #bfdbfe', 
                               borderRadius: 'var(--radius-md)', padding: '16px', marginBottom: '14px' 
                             }}>
-                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 700, fontSize: '13px', color: '#1e40af' }}>
                                   <ListPlus size={16} /> Options & Correct Answer
                                 </div>
-                                <span style={{ fontSize: '11px', color: '#3b82f6' }}>
-                                  Click the radio button next to the option that is correct.
-                                </span>
+
+                                {/* Switch between Single Choice and Multi-Select */}
+                                <div style={{ display: 'flex', background: '#dbeafe', borderRadius: '6px', padding: '3px', gap: '2px' }}>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      updateQuestion(sIdx, qIdx, 'questionType', 'MCQ');
+                                      const firstIdx = (q.correctOptionIndices && q.correctOptionIndices[0] !== undefined) ? q.correctOptionIndices[0] : 0;
+                                      selectCorrectMcqOption(sIdx, qIdx, firstIdx);
+                                    }}
+                                    style={{
+                                      padding: '4px 10px',
+                                      fontSize: '11px',
+                                      fontWeight: 700,
+                                      borderRadius: '4px',
+                                      border: 'none',
+                                      background: q.questionType === 'MCQ' ? '#2563eb' : 'transparent',
+                                      color: q.questionType === 'MCQ' ? '#ffffff' : '#1e40af',
+                                      cursor: 'pointer'
+                                    }}
+                                  >
+                                    Single Choice (Radio)
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      updateQuestion(sIdx, qIdx, 'questionType', 'MULTI_SELECT');
+                                      if (!q.correctOptionIndices || q.correctOptionIndices.length === 0) {
+                                        selectCorrectMcqOption(sIdx, qIdx, 0);
+                                      }
+                                    }}
+                                    style={{
+                                      padding: '4px 10px',
+                                      fontSize: '11px',
+                                      fontWeight: 700,
+                                      borderRadius: '4px',
+                                      border: 'none',
+                                      background: q.questionType === 'MULTI_SELECT' ? '#2563eb' : 'transparent',
+                                      color: q.questionType === 'MULTI_SELECT' ? '#ffffff' : '#1e40af',
+                                      cursor: 'pointer'
+                                    }}
+                                  >
+                                    Multiple Select (Checkboxes)
+                                  </button>
+                                </div>
+                              </div>
+
+                              <div style={{ fontSize: '12px', color: '#2563eb', marginBottom: '10px' }}>
+                                {q.questionType === 'MULTI_SELECT' 
+                                  ? '☑ Check all options that are correct answers. Candidates can select multiple choices.' 
+                                  : '◉ Select the radio button next to the single correct option.'}
                               </div>
 
                               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                {(q.options || ['Option A', 'Option B', 'Option C', 'Option D']).map((opt, optIdx) => {
+                                {(q.options || ['', '', '', '']).map((opt, optIdx) => {
                                   const optLetter = String.fromCharCode(65 + optIdx);
-                                  const isCorrect = q.answerKey === opt;
+                                  const isMulti = q.questionType === 'MULTI_SELECT';
+                                  const isCorrect = isMulti
+                                    ? (q.correctOptionIndices || []).includes(optIdx)
+                                    : (q.correctOptionIndices ? q.correctOptionIndices[0] === optIdx : q.answerKey === opt);
 
                                   return (
                                     <div 
@@ -864,15 +1109,26 @@ export default function PapersView({ onAssignPaper, courseId }) {
                                         padding: '6px 12px', borderRadius: '6px'
                                       }}
                                     >
-                                      <input
-                                        type="radio"
-                                        name={`correctOpt_${sIdx}_${qIdx}`}
-                                        id={`mcq-opt-${sIdx}-${qIdx}-${optIdx}`}
-                                        checked={isCorrect}
-                                        onChange={() => selectCorrectMcqOption(sIdx, qIdx, opt)}
-                                        style={{ accentColor: '#2563eb', cursor: 'pointer' }}
-                                        title="Mark as correct answer"
-                                      />
+                                      {isMulti ? (
+                                        <input
+                                          type="checkbox"
+                                          id={`mcq-opt-${sIdx}-${qIdx}-${optIdx}`}
+                                          checked={isCorrect}
+                                          onChange={() => toggleCorrectMultiSelectOption(sIdx, qIdx, optIdx)}
+                                          style={{ accentColor: '#2563eb', cursor: 'pointer', width: '16px', height: '16px' }}
+                                          title="Mark as correct answer"
+                                        />
+                                      ) : (
+                                        <input
+                                          type="radio"
+                                          name={`correctOpt_${sIdx}_${qIdx}`}
+                                          id={`mcq-opt-${sIdx}-${qIdx}-${optIdx}`}
+                                          checked={isCorrect}
+                                          onChange={() => selectCorrectMcqOption(sIdx, qIdx, optIdx)}
+                                          style={{ accentColor: '#2563eb', cursor: 'pointer', width: '16px', height: '16px' }}
+                                          title="Mark as correct answer"
+                                        />
+                                      )}
                                       <label 
                                         htmlFor={`mcq-opt-${sIdx}-${qIdx}-${optIdx}`}
                                         style={{ 
@@ -886,14 +1142,14 @@ export default function PapersView({ onAssignPaper, courseId }) {
                                         type="text"
                                         value={opt}
                                         onChange={(e) => updateMcqOption(sIdx, qIdx, optIdx, e.target.value)}
-                                        placeholder={`Option ${optLetter} text`}
+                                        placeholder={`Option ${optLetter}`}
                                         className="input"
                                         style={{ flex: 1, padding: '6px 10px', fontSize: '13px' }}
                                         required
                                       />
                                       {isCorrect && (
                                         <span style={{ fontSize: '11px', fontWeight: 700, color: '#16a34a', background: '#dcfce7', padding: '2px 8px', borderRadius: '4px' }}>
-                                          Correct Answer
+                                          {isMulti ? 'Correct Choice' : 'Correct Answer'}
                                         </span>
                                       )}
                                       {(q.options || []).length > 2 && (
@@ -1364,10 +1620,26 @@ export default function PapersView({ onAssignPaper, courseId }) {
                       <div style={{ fontSize: '14px', lineHeight: '1.5' }}>
                         {q.question_text}
                       </div>
+                      {q.code_snippet && (
+                        <pre style={{
+                          background: '#0f172a', color: '#38bdf8', border: '1px solid #1e293b',
+                          borderRadius: '6px', padding: '10px 14px', fontFamily: 'Consolas, monospace',
+                          fontSize: '13px', margin: '8px 0', overflowX: 'auto', whiteSpace: 'pre-wrap'
+                        }}>
+                          <code>{q.code_snippet}</code>
+                        </pre>
+                      )}
                       {q.options && Array.isArray(q.options) && (
-                        <ol style={{ marginLeft: '24px', marginTop: '6px' }}>
-                          {q.options.map((opt, oIdx) => <li key={oIdx}>{opt}</li>)}
-                        </ol>
+                        <div style={{ marginTop: '6px', marginLeft: '12px' }}>
+                          {q.options.map((opt, oIdx) => (
+                            <div key={oIdx} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', marginBottom: '4px' }}>
+                              <span style={{ fontWeight: 'bold' }}>
+                                {q.question_type === 'MULTI_SELECT' ? '☐' : '○'} {String.fromCharCode(65 + oIdx)}.
+                              </span>
+                              <span>{opt}</span>
+                            </div>
+                          ))}
+                        </div>
                       )}
                     </div>
                   ))}

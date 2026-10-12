@@ -67,9 +67,15 @@ function renderQuestionPaperHTML(paperData, orgName = 'EXAMINATION & EVALUATION 
               <span>[${q.marks} Marks]</span>
             </div>
             <div class="q-text">${q.question_text.replace(/\n/g, '<br>')}</div>
+            ${q.code_snippet ? `
+              <pre style="background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 6px; padding: 10px 14px; font-family: monospace; font-size: 13px; margin: 8px 0; overflow-x: auto; white-space: pre-wrap;"><code>${q.code_snippet.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</code></pre>
+            ` : ''}
             ${q.options && Array.isArray(q.options) && q.options.length > 0 ? `
-              <ol class="q-options">
-                ${q.options.map(opt => `<li>${opt}</li>`).join('')}
+              <ol class="q-options" ${q.question_type === 'MULTI_SELECT' ? 'style="list-style-type: none; padding-left: 10px;"' : ''}>
+                ${q.options.map((opt, oIdx) => q.question_type === 'MULTI_SELECT' 
+                  ? `<li style="margin-bottom: 4px;">[ &nbsp; ] ${String.fromCharCode(65 + oIdx)}. ${opt}</li>` 
+                  : `<li>${opt}</li>`
+                ).join('')}
               </ol>
             ` : ''}
           </div>

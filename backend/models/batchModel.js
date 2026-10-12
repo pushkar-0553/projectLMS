@@ -13,21 +13,24 @@ class Batch {
       const batchId = result.insertId;
 
       if (studentIds && Array.isArray(studentIds) && studentIds.length > 0) {
-        for (const studentId of studentIds) {
-          const sId = parseInt(studentId, 10);
-          if (!isNaN(sId)) {
-            await connection.execute(
-              'INSERT INTO StudentBatchMap (student_id, batch_id) VALUES (?, ?) ON DUPLICATE KEY UPDATE batch_id = VALUES(batch_id)',
-              [sId, batchId]
-            );
-          }
-        }
+        const validStudentIds = studentIds
+          .map(s => parseInt(s, 10))
+          .filter(id => !isNaN(id));
 
-        const placeholders = studentIds.map(() => '?').join(',');
-        await connection.execute(
-          `UPDATE Users SET batch = ? WHERE id IN (${placeholders})`,
-          [name, ...studentIds]
-        );
+        if (validStudentIds.length > 0) {
+          const insertPlaceholders = validStudentIds.map(() => '(?, ?)').join(', ');
+          const insertParams = validStudentIds.flatMap(id => [id, batchId]);
+          await connection.execute(
+            `INSERT INTO StudentBatchMap (student_id, batch_id) VALUES ${insertPlaceholders} ON DUPLICATE KEY UPDATE batch_id = VALUES(batch_id)`,
+            insertParams
+          );
+
+          const updatePlaceholders = validStudentIds.map(() => '?').join(',');
+          await connection.execute(
+            `UPDATE Users SET batch = ? WHERE id IN (${updatePlaceholders})`,
+            [name, ...validStudentIds]
+          );
+        }
       }
 
       await connection.commit();
@@ -93,23 +96,26 @@ class Batch {
         }
         const batchName = bRows[0].name;
 
-        for (const sId of studentIds) {
-          const numId = parseInt(sId, 10);
-          if (!isNaN(numId)) {
-            await connection.execute(
-              `INSERT INTO StudentBatchMap (student_id, batch_id) 
-               VALUES (?, ?) 
-               ON DUPLICATE KEY UPDATE batch_id = VALUES(batch_id), sub_batch_id = NULL`,
-              [numId, batchId]
-            );
-          }
-        }
+        const validStudentIds = studentIds
+          .map(s => parseInt(s, 10))
+          .filter(id => !isNaN(id));
 
-        const placeholders = studentIds.map(() => '?').join(',');
-        await connection.execute(
-          `UPDATE Users SET batch = ? WHERE id IN (${placeholders})`,
-          [batchName, ...studentIds]
-        );
+        if (validStudentIds.length > 0) {
+          const insertPlaceholders = validStudentIds.map(() => '(?, ?)').join(', ');
+          const insertParams = validStudentIds.flatMap(id => [id, batchId]);
+          await connection.execute(
+            `INSERT INTO StudentBatchMap (student_id, batch_id) 
+             VALUES ${insertPlaceholders} 
+             ON DUPLICATE KEY UPDATE batch_id = VALUES(batch_id), sub_batch_id = NULL`,
+            insertParams
+          );
+
+          const placeholders = validStudentIds.map(() => '?').join(',');
+          await connection.execute(
+            `UPDATE Users SET batch = ? WHERE id IN (${placeholders})`,
+            [batchName, ...validStudentIds]
+          );
+        }
       } else {
         // Unassign batch
         const placeholders = studentIds.map(() => '?').join(',');
@@ -285,11 +291,23 @@ class Batch {
       params.push(courseId);
     }
     const [batches] = await pool.execute(query, params);
-    const [subBatches] = await pool.execute('SELECT * FROM SubBatches');
+    if (!batches || batches.length === 0) return [];
+
+    const batchIds = batches.map(b => b.id);
+    const idPlaceholders = batchIds.map(() => '?').join(',');
+
+    const [subBatches] = await pool.query(
+      `SELECT * FROM SubBatches WHERE batch_id IN (${idPlaceholders})`,
+      batchIds
+    );
     
-    // Also attach student counts per batch
-    const [counts] = await pool.execute(
-      'SELECT batch_id, COUNT(*) as student_count FROM StudentBatchMap WHERE batch_id IS NOT NULL GROUP BY batch_id'
+    // Also attach student counts per batch scoped to the selected batches
+    const [counts] = await pool.query(
+      `SELECT batch_id, COUNT(*) as student_count 
+       FROM StudentBatchMap 
+       WHERE batch_id IN (${idPlaceholders}) 
+       GROUP BY batch_id`,
+      batchIds
     );
     const countMap = {};
     counts.forEach(c => { countMap[c.batch_id] = c.student_count; });

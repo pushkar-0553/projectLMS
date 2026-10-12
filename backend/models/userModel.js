@@ -47,17 +47,31 @@ class User {
     return rows[0];
   }
 
-  static async getAll() {
+  static async getAll(limit = null, offset = 0) {
+    if (limit !== null && !isNaN(parseInt(limit, 10))) {
+      const [rows] = await pool.query(
+        'SELECT id, name, email, role, mobile, batch, created_at FROM Users ORDER BY created_at DESC LIMIT ? OFFSET ?',
+        [parseInt(limit, 10), Math.max(0, parseInt(offset, 10) || 0)]
+      );
+      return rows;
+    }
     const [rows] = await pool.execute(
       'SELECT id, name, email, role, mobile, batch, created_at FROM Users ORDER BY created_at DESC'
     );
     return rows;
   }
 
-  static async findByRole(role, courseId = null) {
+  static async findByRole(role, courseId = null, limit = null, offset = 0) {
+    let paginationClause = '';
+    const paginationParams = [];
+    if (limit !== null && !isNaN(parseInt(limit, 10))) {
+      paginationClause = ' LIMIT ? OFFSET ?';
+      paginationParams.push(parseInt(limit, 10), Math.max(0, parseInt(offset, 10) || 0));
+    }
+
     if (courseId) {
       if (role === 'student') {
-        const [rows] = await pool.execute(
+        const [rows] = await pool.query(
           `SELECT u.id, u.name, u.email, u.role, u.mobile, u.batch, u.created_at,
             sbm.batch_id,
             sbm.sub_batch_id,
@@ -70,25 +84,25 @@ class User {
            LEFT JOIN Batches b ON sbm.batch_id = b.id
            LEFT JOIN SubBatches sb ON sbm.sub_batch_id = sb.id
            WHERE u.role = ?
-           ORDER BY u.created_at DESC`,
-          [courseId, role]
+           ORDER BY u.created_at DESC${paginationClause}`,
+          [courseId, role, ...paginationParams]
         );
         return rows;
       }
 
-      const [rows] = await pool.execute(
+      const [rows] = await pool.query(
         `SELECT u.id, u.name, u.email, u.role, u.mobile, u.batch, u.created_at, cm.course_id
          FROM Users u
          JOIN CourseMemberships cm ON u.id = cm.user_id AND cm.course_id = ? AND cm.status = 'active'
          WHERE u.role = ?
-         ORDER BY u.created_at DESC`,
-        [courseId, role]
+         ORDER BY u.created_at DESC${paginationClause}`,
+        [courseId, role, ...paginationParams]
       );
       return rows;
     }
 
     if (role === 'student') {
-      const [rows] = await pool.execute(
+      const [rows] = await pool.query(
         `SELECT u.id, u.name, u.email, u.role, u.mobile, u.batch, u.created_at,
           sbm.batch_id,
           sbm.sub_batch_id,
@@ -99,15 +113,15 @@ class User {
          LEFT JOIN Batches b ON sbm.batch_id = b.id
          LEFT JOIN SubBatches sb ON sbm.sub_batch_id = sb.id
          WHERE u.role = ?
-         ORDER BY u.created_at DESC`,
-        [role]
+         ORDER BY u.created_at DESC${paginationClause}`,
+        [role, ...paginationParams]
       );
       return rows;
     }
 
-    const [rows] = await pool.execute(
-      'SELECT id, name, email, role, mobile, batch, created_at FROM Users WHERE role = ? ORDER BY created_at DESC',
-      [role]
+    const [rows] = await pool.query(
+      `SELECT id, name, email, role, mobile, batch, created_at FROM Users WHERE role = ? ORDER BY created_at DESC${paginationClause}`,
+      [role, ...paginationParams]
     );
     return rows;
   }
@@ -154,11 +168,20 @@ class User {
   }
 
   static async delete(userId) {
-    const [result] = await pool.execute(
-      'DELETE FROM Users WHERE id = ?',
-      [userId]
-    );
-    return result.affectedRows > 0;
+    const connection = await pool.getConnection();
+    try {
+      await connection.beginTransaction();
+      await connection.execute('DELETE FROM StudentBatchMap WHERE student_id = ?', [userId]);
+      await connection.execute('DELETE FROM CourseMemberships WHERE user_id = ?', [userId]);
+      const [result] = await connection.execute('DELETE FROM Users WHERE id = ?', [userId]);
+      await connection.commit();
+      return result.affectedRows > 0;
+    } catch (err) {
+      await connection.rollback();
+      throw err;
+    } finally {
+      connection.release();
+    }
   }
 }
 

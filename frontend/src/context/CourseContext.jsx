@@ -15,7 +15,7 @@ export const CourseProvider = ({ children }) => {
     'login', 'super-admin', 'resumes', 'public', 'users', 'admin',
     'coordinator', 'student', 'dashboard', 'my-progress', 'academic-progress',
     'project-learning', 'guided-learning', 'messages', 'notifications',
-    'change-password', 'faculty'
+    'change-password', 'faculty', 'exam'
   ];
   let resolvedSlug = paramSlug;
   if (!resolvedSlug && pathParts.length > 0 && !reserved.includes(pathParts[0])) {
@@ -34,8 +34,8 @@ export const CourseProvider = ({ children }) => {
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    // Skip course resolution on super-admin and public recruiter pages
-    if (pathParts[0] === 'super-admin' || pathParts[0] === 'public' || location.pathname.startsWith('/resumes/share/')) {
+    // Skip course resolution on super-admin, public recruiter, and candidate exam pages
+    if (pathParts[0] === 'super-admin' || pathParts[0] === 'public' || pathParts[0] === 'exam' || location.pathname.startsWith('/resumes/share/')) {
       setLoading(false);
       return;
     }
