@@ -91,10 +91,6 @@ export default function DashboardView({ onNavigate, courseId, courseSlug }) {
             <Calendar size={16} />
             Assign Paper to Batch
           </button>
-          <button onClick={() => onNavigate('email-center')} className="btn btn-secondary btn-sm">
-            <Mail size={16} />
-            Email &amp; SMTP Settings
-          </button>
           <button onClick={() => onNavigate('evaluation')} className="btn btn-secondary btn-sm">
             <CheckSquare size={16} />
             Evaluate Candidates
