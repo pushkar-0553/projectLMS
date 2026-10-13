@@ -74,7 +74,7 @@ export default function ExamHub() {
             Written Examination Management
           </h1>
           <p style={{ color: '#64748b', fontSize: '14px', margin: 0 }}>
-            Question paper authoring, batch scheduling, OTP proctoring, student grading &amp; multi-SMTP delivery
+            Question paper authoring, batch scheduling, OTP proctoring, student grading &amp; 
           </p>
         </div>
       </div>
