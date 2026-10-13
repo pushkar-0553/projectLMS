@@ -1,9 +1,8 @@
-const nodemailer = require('nodemailer');
 const db = require('../config/db');
 const { decrypt } = require('../config/crypto');
 const { getNextAvailableSmtpAccount } = require('./smtpService');
 const { logAudit } = require('./auditService');
-const { isHttpEmailConfigured, sendEmailViaHttp } = require('./httpEmailSender');
+const { sendEmail, isEmailProviderConfigured, EmailDeliveryError } = require('./emailProvider');
 
 let isWorkerRunning = false;
 let workerIntervalHandle = null;
@@ -273,78 +272,25 @@ async function trackEmailOpen(jobId) {
   }
 }
 
-// Pooled Nodemailer transporters map: `${smtpId}_${host}_${port}_${secure}` => Transporter
-const transporterPool = new Map();
-
-function getPooledTransporter(smtpAcc, plainPassword, host, port, secure) {
-  const poolKey = `${smtpAcc.id}_${host}_${port}_${secure}_${smtpAcc.username}`;
-  let transporter = transporterPool.get(poolKey);
-  if (!transporter) {
-    transporter = nodemailer.createTransport({
-      pool: true,
-      maxConnections: 3,
-      maxMessages: 100,
-      rateLimit: 14,
-      host,
-      port,
-      secure,
-      family: 4, // Force IPv4 to avoid ENETUNREACH on hosting environments
-      auth: {
-        user: smtpAcc.username,
-        pass: plainPassword
-      },
-      tls: { rejectUnauthorized: false },
-      connectionTimeout: 15000,
-      greetingTimeout: 15000,
-      socketTimeout: 15000
-    });
-    transporterPool.set(poolKey, transporter);
-  }
-  return transporter;
-}
-
-function invalidateTransporterPool(accountId = null) {
-  if (accountId) {
-    for (const [key, tr] of transporterPool.entries()) {
-      if (key.startsWith(`${accountId}_`)) {
-        try { tr.close(); } catch (e) {}
-        transporterPool.delete(key);
-      }
-    }
-  } else {
-    for (const [, tr] of transporterPool.entries()) {
-      try { tr.close(); } catch (e) {}
-    }
-    transporterPool.clear();
-  }
+// Transporter pool stub retained for backward compatibility
+function invalidateTransporterPool() {
+  // Production mailing uses Brevo HTTPS API over Port 443 (stateless HTTPS dispatch)
 }
 
 async function executeSingleJob(job) {
-  // 1. Select available healthy SMTP account with quota
+  // Optional association with legacy smtp_accounts for display/quota logging if exists
   const smtpAcc = await getNextAvailableSmtpAccount();
-
-  if (!smtpAcc) {
-    console.warn('[EMAIL WORKER] No available healthy SMTP accounts with remaining quota. Postponing job ID:', job.id);
-    await db.query(`
-      UPDATE email_jobs 
-      SET status = 'RETRY_PENDING', scheduled_for = DATE_ADD(NOW(), INTERVAL 5 MINUTE), last_error = 'All SMTP accounts exceeded quota or unhealthy'
-      WHERE id = ?
-    `, [job.id]);
-    return false;
-  }
-
-  // 2. Prepare transporter using connection pooling for 10x-20x throughput
-  const plainPassword = decrypt(smtpAcc.encrypted_password, smtpAcc.iv, smtpAcc.auth_tag).replace(/\s+/g, '');
-  const isPrimarySecure = smtpAcc.secure_type === 'SSL' || smtpAcc.port === 465;
-  let transporter = getPooledTransporter(smtpAcc, plainPassword, smtpAcc.host, smtpAcc.port, isPrimarySecure);
+  const smtpAccountId = smtpAcc ? smtpAcc.id : null;
+  const fromName = smtpAcc?.display_name || process.env.EMAIL_FROM_NAME;
 
   const startTime = Date.now();
   let sendSuccess = false;
   let responseMessage = '';
   let errorMessage = '';
+  let isPermanentFailure = false;
 
   try {
-    // Re-hydrate OTP placeholder if needed
+    // Re-hydrate OTP placeholder if needed (reuses existing candidate OTP without regenerating)
     let finalHtml = job.body_html;
     if (finalHtml.includes('[REVERT_OTP]')) {
       let decOtp = '------';
@@ -358,116 +304,52 @@ async function executeSingleJob(job) {
       finalHtml = finalHtml.replace(/\[REVERT_OTP\]/g, decOtp);
     }
 
-    // A. If configured as an HTTPS email service (Resend, Brevo, SendGrid), send over HTTPS (port 443)
-    if (smtpAcc.secure_type === 'HTTPS' || isHttpEmailConfigured({ ...smtpAcc, plainPassword })) {
-      try {
-        const httpRes = await sendEmailViaHttp({
-          smtpAcc,
-          plainPassword,
-          toEmail: job.recipient_email,
-          toName: job.recipient_name,
-          subject: job.subject,
-          html: finalHtml
-        });
-        sendSuccess = true;
-        responseMessage = httpRes.response;
-      } catch (httpErr) {
-        sendSuccess = false;
-        errorMessage = httpErr.message;
-      }
-    } else {
-      // B. Standard pooled SMTP delivery with fallback port and Render HTTP API fallback
-      try {
-        const info = await transporter.sendMail({
-          from: `"${smtpAcc.display_name}" <${smtpAcc.sender_email}>`,
-          to: `"${job.recipient_name}" <${job.recipient_email}>`,
-          subject: job.subject,
-          html: finalHtml
-        });
+    // Dispatch via unified HTTPS Email Provider (Brevo REST API over Port 443)
+    const result = await sendEmail({
+      to: job.recipient_email,
+      toName: job.recipient_name,
+      subject: job.subject,
+      html: finalHtml,
+      fromName
+    });
 
-        sendSuccess = true;
-        responseMessage = info.response || 'Message delivered successfully';
-      } catch (primarySendErr) {
-        // If connection timed out or socket error, attempt alternate port fallback
-        const isNetworkOrTimeout = /timeout|ECONNREFUSED|ENOTFOUND|ETIMEDOUT|ENETUNREACH/i.test(primarySendErr.message);
-        if (isNetworkOrTimeout && (smtpAcc.port === 465 || smtpAcc.port === 587)) {
-          const altPort = smtpAcc.port === 465 ? 587 : 465;
-          const altSecure = altPort === 465;
-          console.warn(`[EMAIL WORKER] Primary port ${smtpAcc.port} failed for job #${job.id}. Retrying on fallback port ${altPort}...`);
-          try {
-            const altTransporter = getPooledTransporter(smtpAcc, plainPassword, smtpAcc.host, altPort, altSecure);
-            const info = await altTransporter.sendMail({
-              from: `"${smtpAcc.display_name}" <${smtpAcc.sender_email}>`,
-              to: `"${job.recipient_name}" <${job.recipient_email}>`,
-              subject: job.subject,
-              html: finalHtml
-            });
-            sendSuccess = true;
-            responseMessage = (info.response || 'Delivered') + ` (via fallback port ${altPort})`;
-
-            // Save working port so next emails don't hit the timeout
-            await db.query(`UPDATE smtp_accounts SET port = ?, secure_type = ? WHERE id = ?`, [altPort, altSecure ? 'SSL' : 'STARTTLS', smtpAcc.id]);
-          } catch (altErr) {
-            // Check if HTTP email API fallback is available in environment
-            if (process.env.RESEND_API_KEY || process.env.BREVO_API_KEY || process.env.SENDGRID_API_KEY) {
-              console.log(`[EMAIL WORKER] SMTP ports blocked on hosting network (Render). Auto-switching to HTTPS API fallback for job #${job.id}...`);
-              try {
-                const httpRes = await sendEmailViaHttp({
-                  smtpAcc,
-                  plainPassword,
-                  toEmail: job.recipient_email,
-                  toName: job.recipient_name,
-                  subject: job.subject,
-                  html: finalHtml
-                });
-                sendSuccess = true;
-                responseMessage = httpRes.response + ' (Auto-switched to HTTPS on Render)';
-              } catch (httpFallbackErr) {
-                sendSuccess = false;
-                errorMessage = `SMTP timeout (${altErr.message}) & HTTPS fallback failed: ${httpFallbackErr.message}`;
-              }
-            } else {
-              sendSuccess = false;
-              errorMessage = altErr.message;
-            }
-          }
-        } else {
-          sendSuccess = false;
-          errorMessage = primarySendErr.message;
-        }
-      }
-    }
-  } catch (sendErr) {
+    sendSuccess = true;
+    responseMessage = result.response || 'Accepted by Brevo (HTTPS)';
+  } catch (err) {
     sendSuccess = false;
-    errorMessage = sendErr.message;
+    errorMessage = err.message || 'Unknown email delivery error';
+    isPermanentFailure = Boolean(err.isPermanent);
   }
 
   const latencyMs = Date.now() - startTime;
 
-  // 3. Update status and quotas
+  // 3. Update status and delivery logs
   if (sendSuccess) {
     await db.query(`
       UPDATE email_jobs 
       SET status = 'SENT', smtp_account_id = ?, sent_at = NOW(), last_error = NULL
       WHERE id = ?
-    `, [smtpAcc.id, job.id]);
+    `, [smtpAccountId, job.id]);
 
-    await db.query(`
-      UPDATE smtp_accounts 
-      SET sent_today = sent_today + 1, consecutive_failures = 0
-      WHERE id = ?
-    `, [smtpAcc.id]);
+    if (smtpAccountId) {
+      await db.query(`
+        UPDATE smtp_accounts 
+        SET sent_today = sent_today + 1, consecutive_failures = 0
+        WHERE id = ?
+      `, [smtpAccountId]);
+    }
 
     await db.query(`
       INSERT INTO email_delivery_logs 
         (job_id, smtp_account_id, attempt_number, status, response_message, latency_ms)
       VALUES (?, ?, ?, 'SUCCESS', ?, ?)
-    `, [job.id, smtpAcc.id, job.attempt_count + 1, responseMessage, latencyMs]);
+    `, [job.id, smtpAccountId, job.attempt_count + 1, responseMessage, latencyMs]);
 
-    console.log(`[EMAIL WORKER] Job #${job.id} sent to ${job.recipient_email} via ${smtpAcc.sender_email} (${latencyMs}ms)`);
+    console.log(`[EMAIL WORKER] Job #${job.id} accepted by Brevo for ${job.recipient_email} (${latencyMs}ms)`);
   } else {
     const nextAttempt = job.attempt_count + 1;
-    const isFinalFail = nextAttempt >= job.max_attempts;
+    // Permanent failures (e.g. 400 invalid recipient/unverified sender, 401 unauthorized) fail immediately without wasteful retries
+    const isFinalFail = isPermanentFailure || nextAttempt >= job.max_attempts;
     const newStatus = isFinalFail ? 'FAILED' : 'RETRY_PENDING';
     const retryDelayMinutes = nextAttempt * 2; // Exponential backoff: 2m, 4m, etc.
 
@@ -480,21 +362,23 @@ async function executeSingleJob(job) {
       WHERE id = ?
     `, [newStatus, nextAttempt, errorMessage, retryDelayMinutes, job.id]);
 
-    await db.query(`
-      UPDATE smtp_accounts 
-      SET consecutive_failures = consecutive_failures + 1,
-          is_healthy = CASE WHEN consecutive_failures >= 3 THEN 0 ELSE is_healthy END,
-          last_error_message = ?
-      WHERE id = ?
-    `, [errorMessage, smtpAcc.id]);
+    if (smtpAccountId) {
+      await db.query(`
+        UPDATE smtp_accounts 
+        SET consecutive_failures = consecutive_failures + 1,
+            is_healthy = CASE WHEN consecutive_failures >= 3 THEN 0 ELSE is_healthy END,
+            last_error_message = ?
+        WHERE id = ?
+      `, [errorMessage, smtpAccountId]);
+    }
 
     await db.query(`
       INSERT INTO email_delivery_logs 
         (job_id, smtp_account_id, attempt_number, status, response_message, latency_ms)
       VALUES (?, ?, ?, 'FAILED', ?, ?)
-    `, [job.id, smtpAcc.id, nextAttempt, errorMessage, latencyMs]);
+    `, [job.id, smtpAccountId, nextAttempt, errorMessage, latencyMs]);
 
-    console.error(`[EMAIL WORKER] Job #${job.id} failed on attempt ${nextAttempt}: ${errorMessage}`);
+    console.error(`[EMAIL WORKER] Job #${job.id} failed on attempt ${nextAttempt} (${isPermanentFailure ? 'Permanent' : 'Temporary'}): ${errorMessage}`);
   }
 
   return sendSuccess;

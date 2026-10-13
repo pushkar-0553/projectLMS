@@ -2,7 +2,7 @@ const nodemailer = require('nodemailer');
 const db = require('../config/db');
 const { encrypt, decrypt } = require('../config/crypto');
 const { logAudit } = require('./auditService');
-const { isHttpEmailConfigured, testHttpConnection } = require('./httpEmailSender');
+const { testEmailProviderConnection, isEmailProviderConfigured } = require('./emailProvider');
 
 /**
  * List all SMTP accounts (passwords sanitized/masked)
@@ -109,10 +109,10 @@ async function testSmtpConnection(accountId) {
   const acc = accounts[0];
   const plainPassword = decrypt(acc.encrypted_password, acc.iv, acc.auth_tag).replace(/\s+/g, '');
 
-  // 1. If configured as an HTTPS email service (Resend, Brevo, SendGrid), verify over HTTPS (port 443)
-  if (acc.secure_type === 'HTTPS' || isHttpEmailConfigured({ ...acc, plainPassword })) {
+  // 1. If Brevo HTTP API is configured or account specifies HTTPS/Brevo, verify over HTTPS (port 443)
+  if (acc.secure_type === 'HTTPS' || isEmailProviderConfigured() || plainPassword.startsWith('xkeysib-') || (acc.host || '').includes('brevo')) {
     try {
-      const httpResult = await testHttpConnection({ smtpAcc: acc, plainPassword });
+      const httpResult = await testEmailProviderConnection();
       await db.query(`
         UPDATE smtp_accounts 
         SET is_healthy = 1, consecutive_failures = 0, last_tested_at = NOW(), last_error_message = NULL
