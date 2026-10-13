@@ -28,7 +28,6 @@ export default function ExamHub() {
     { id: 'dashboard', label: 'Dashboard', icon: BarChart3 },
     { id: 'papers', label: 'Question Papers', icon: FileText },
     { id: 'assignments', label: 'Assignments', icon: Calendar },
-    { id: 'email-center', label: 'Email Center', icon: Mail },
     { id: 'ai-config', label: 'AI Configuration', icon: Bot },
     { id: 'evaluation', label: 'Evaluation', icon: CheckSquare },
     { id: 'reports', label: 'Analytics & Reports', icon: PieChart },
@@ -144,7 +143,6 @@ export default function ExamHub() {
             courseSlug={courseSlug} 
           />
         )}
-        {activeTab === 'email-center' && <EmailCenterView />}
         {activeTab === 'ai-config' && <AiConfigView />}
         {activeTab === 'evaluation' && <EvaluationView courseId={activeCourseId} courseSlug={courseSlug} />}
         {activeTab === 'reports' && <ReportsView courseId={activeCourseId} courseSlug={courseSlug} />}
