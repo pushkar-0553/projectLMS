@@ -67,6 +67,8 @@ const SuperAdminTelemetry = lazy(() => import('./pages/superadmin/SuperAdminTele
 const ExamHub = lazy(() => import('./pages/exams/ExamHub'))
 const StudentExamPortal = lazy(() => import('./pages/exams/StudentExamPortal'))
 const StudentExamsPage = lazy(() => import('./pages/student/StudentExamsPage'))
+const MockInterviewsList = lazy(() => import('./pages/mockInterviews/MockInterviewsList'))
+const MockInterviewDetail = lazy(() => import('./pages/mockInterviews/MockInterviewDetail'))
 
 const PageLoader = () => (
   <div className="loading" style={{ minHeight: '60vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -78,6 +80,7 @@ const PageLoader = () => (
 const isAdminOrSuper = (user) => user?.role === 'admin' || user?.role === 'super_admin';
 const isCoordinatorOrAbove = (user) => user?.role === 'coordinator' || user?.role === 'faculty' || user?.role === 'admin' || user?.role === 'super_admin';
 const isFacultyOrAbove = (user) => user?.role === 'faculty' || user?.role === 'coordinator' || user?.role === 'admin' || user?.role === 'super_admin';
+const isMockInterviewsAuthorized = (user) => user?.role === 'coordinator' || user?.role === 'admin' || user?.role === 'super_admin';
 
 const getRoleHomeRedirect = (user) => {
   if (!user) return '/login';
@@ -107,6 +110,8 @@ function App() {
     } else if (path.startsWith('/resumes/share/')) {
       title = 'Shared Resumes | VCUBE';
       isResumePage = true;
+    } else if (path.includes('/mock-interviews')) {
+      title = 'Mock Interviews | VCUBE';
     } else if (path === '/login') {
       title = 'Login | VCUBE LMS';
     } else if (path.includes('/dashboard')) {
@@ -169,6 +174,88 @@ function App() {
         {/* Public Student Examination Portal */}
         <Route path="/exam/:assignmentCode" element={<StudentExamPortal />} />
         <Route path="/:courseSlug/exam/:assignmentCode" element={<StudentExamPortal />} />
+
+        {/* Protected Mock Interviews Routes (Admin, Coordinator & Super Admin Only) with Sidebar Layout */}
+        <Route 
+          path="/mock-interviews" 
+          element={
+            !user ? (
+              <Navigate to="/login" replace />
+            ) : isMockInterviewsAuthorized(user) ? (
+              user?.role === 'coordinator' || user?.role === 'faculty' ? (
+                <CoordinatorLayout>
+                  <MockInterviewsList />
+                </CoordinatorLayout>
+              ) : (
+                <AdminLayout>
+                  <MockInterviewsList />
+                </AdminLayout>
+              )
+            ) : (
+              <Navigate to={getRoleHomeRedirect(user)} replace />
+            )
+          } 
+        />
+        <Route 
+          path="/:courseSlug/mock-interviews" 
+          element={
+            !user ? (
+              <Navigate to="/login" replace />
+            ) : isMockInterviewsAuthorized(user) ? (
+              user?.role === 'coordinator' || user?.role === 'faculty' ? (
+                <CoordinatorLayout>
+                  <MockInterviewsList />
+                </CoordinatorLayout>
+              ) : (
+                <AdminLayout>
+                  <MockInterviewsList />
+                </AdminLayout>
+              )
+            ) : (
+              <Navigate to={getRoleHomeRedirect(user)} replace />
+            )
+          } 
+        />
+        <Route 
+          path="/mock-interviews/:id" 
+          element={
+            !user ? (
+              <Navigate to="/login" replace />
+            ) : isMockInterviewsAuthorized(user) ? (
+              user?.role === 'coordinator' || user?.role === 'faculty' ? (
+                <CoordinatorLayout>
+                  <MockInterviewDetail />
+                </CoordinatorLayout>
+              ) : (
+                <AdminLayout>
+                  <MockInterviewDetail />
+                </AdminLayout>
+              )
+            ) : (
+              <Navigate to={getRoleHomeRedirect(user)} replace />
+            )
+          } 
+        />
+        <Route 
+          path="/:courseSlug/mock-interviews/:id" 
+          element={
+            !user ? (
+              <Navigate to="/login" replace />
+            ) : isMockInterviewsAuthorized(user) ? (
+              user?.role === 'coordinator' || user?.role === 'faculty' ? (
+                <CoordinatorLayout>
+                  <MockInterviewDetail />
+                </CoordinatorLayout>
+              ) : (
+                <AdminLayout>
+                  <MockInterviewDetail />
+                </AdminLayout>
+              )
+            ) : (
+              <Navigate to={getRoleHomeRedirect(user)} replace />
+            )
+          } 
+        />
         
         {/* Auth Route */}
         <Route 

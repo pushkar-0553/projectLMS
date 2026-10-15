@@ -24,6 +24,7 @@ const publicResumeRoutes = require('./routes/publicResumeRoutes');
 const courseRoutes = require('./routes/courseRoutes');
 const superAdminRoutes = require('./routes/superAdminRoutes');
 const examRoutes = require('./routes/examRoutes');
+const mockInterviewRoutes = require('./routes/mockInterviewRoutes');
 const { startEmailWorker } = require('./services/emailQueueWorker');
 
 const http = require('http');
@@ -107,6 +108,7 @@ app.use('/api', publicResumeRoutes);
 app.use('/api/courses', courseRoutes);
 app.use('/api/super-admin', superAdminRoutes);
 app.use('/api/exams', examRoutes);
+app.use('/api', mockInterviewRoutes);
 
 app.get('/', (req, res) => {
   res.json({ message: 'Project Learning Module API is running' });

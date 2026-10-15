@@ -339,4 +339,18 @@ export const superAdminAPI = {
   removeCourseAdmin: (courseId, userId) => api.delete(`/super-admin/courses/${courseId}/admins/${userId}`)
 };
 
+export const mockInterviewAPI = {
+  create: (data) => api.post('/mock-interviews', data),
+  getAll: (params) => api.get('/mock-interviews', { params }),
+  getById: (id) => api.get(`/mock-interviews/${id}`),
+  update: (id, data) => api.put(`/mock-interviews/${id}`, data),
+  updateMeetLink: (id, meetLink) => api.patch(`/mock-interviews/${id}/meet-link`, { meet_link: meetLink }),
+  delete: (id) => api.delete(`/mock-interviews/${id}`),
+  getStudents: (id, params) => api.get(`/mock-interviews/${id}/students`, { params }),
+  updateParticipantStatus: (id, studentId, data) => api.post(`/mock-interviews/${id}/participants/${studentId}/status`, data),
+  generateSlots: (id, data) => api.post(`/mock-interviews/${id}/generate-slots`, data),
+  startInterview: (id, studentId, data = {}) => api.post(`/mock-interviews/${id}/participants/${studentId}/start`, data),
+  completeInterview: (id, studentId, data = {}) => api.post(`/mock-interviews/${id}/participants/${studentId}/complete`, data)
+};
+
 export default api;
