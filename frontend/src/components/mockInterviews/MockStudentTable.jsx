@@ -1,5 +1,6 @@
 import React from 'react';
 import styles from '../../pages/mockInterviews/MockInterviewsPage.styles';
+import { generateMockWhatsAppLink } from '../../utils/mockWhatsAppUtils';
 
 const getStatusBadgeStyle = (status) => {
   switch (status) {
@@ -24,7 +25,8 @@ const MockStudentTable = ({
   onMarkInterested,
   onOpenNotInterestedModal,
   onStartInterview,
-  onOpenCompleteModal
+  onOpenCompleteModal,
+  customTemplate
 }) => {
   if (students.length === 0) {
     return (
@@ -54,18 +56,9 @@ const MockStudentTable = ({
           {students.map((s) => {
             const badge = getStatusBadgeStyle(s.status);
 
-            // WhatsApp link
-            let waLink = '#';
-            if (s.student_mobile) {
-              const cleanPhone = s.student_mobile.replace(/\D/g, '');
-              const phoneWithCountry = cleanPhone.length === 10 ? `91${cleanPhone}` : cleanPhone;
-              const slotInfo = s.scheduled_start ? `Slot: ${s.scheduled_start} to ${s.scheduled_end}` : '';
-              const meetInfo = mockEvent?.meet_link ? `\nMeet: ${mockEvent.meet_link}` : '';
-              const msg = encodeURIComponent(
-                `Hello ${s.student_name},\nRegarding "${mockEvent?.title || 'Mock Interview'}" on ${mockEvent?.interview_date || 'scheduled date'}:\n${slotInfo}${meetInfo}\nPlease be available!`
-              );
-              waLink = `https://wa.me/${phoneWithCountry}?text=${msg}`;
-            }
+            // WhatsApp link with customized template
+            const activeTemplate = customTemplate || mockEvent?.whatsapp_template;
+            const waLink = generateMockWhatsAppLink(s.student_mobile, activeTemplate, s, mockEvent);
 
             // Delay calculation (safe)
             let delayMinutes = null;

@@ -13,6 +13,7 @@ router.get('/mock-interviews', mockInterviewController.getAllMockInterviews);
 router.get('/mock-interviews/:id', mockInterviewController.getMockInterviewDetail);
 router.put('/mock-interviews/:id', mockInterviewController.updateMockInterview);
 router.patch('/mock-interviews/:id/meet-link', mockInterviewController.updateMeetLink);
+router.patch('/mock-interviews/:id/whatsapp-template', mockInterviewController.updateWhatsAppTemplate);
 router.delete('/mock-interviews/:id', mockInterviewController.deleteMockInterview);
 
 // Participants Management & Slot Allocation

@@ -152,6 +152,8 @@ const mockInterviewController = {
         meetLink,
         batch_ids,
         batchIds,
+        whatsapp_template,
+        whatsappTemplate,
         status
       } = req.body;
 
@@ -162,6 +164,7 @@ const mockInterviewController = {
         startTime: start_time || startTime,
         defaultDurationMins: default_duration_mins || defaultDurationMins || duration ? parseInt(default_duration_mins || defaultDurationMins || duration, 10) : undefined,
         meetLink: meet_link !== undefined ? meet_link : (meetLink !== undefined ? meetLink : undefined),
+        whatsappTemplate: whatsapp_template !== undefined ? whatsapp_template : whatsappTemplate,
         batchIds: batch_ids !== undefined ? batch_ids : (batchIds !== undefined ? batchIds : null),
         status
       });
@@ -205,6 +208,32 @@ const mockInterviewController = {
     } catch (err) {
       console.error('[MockInterviewController] updateMeetLink error:', err);
       return res.status(500).json({ message: 'Failed to update Google Meet link' });
+    }
+  },
+
+  /**
+   * PATCH /api/mock-interviews/:id/whatsapp-template
+   * Dedicated fast update for WhatsApp custom template
+   */
+  async updateWhatsAppTemplate(req, res) {
+    try {
+      const id = parseInt(req.params.id, 10);
+      const { whatsapp_template, whatsappTemplate } = req.body;
+      const template = whatsapp_template !== undefined ? whatsapp_template : whatsappTemplate;
+
+      const updated = await MockInterview.updateWhatsAppTemplate(id, template);
+      if (!updated) {
+        return res.status(404).json({ message: 'Mock interview not found' });
+      }
+
+      return res.json({
+        success: true,
+        message: 'WhatsApp template updated successfully',
+        whatsapp_template: template
+      });
+    } catch (err) {
+      console.error('[MockInterviewController] updateWhatsAppTemplate error:', err);
+      return res.status(500).json({ message: 'Failed to update WhatsApp template' });
     }
   },
 

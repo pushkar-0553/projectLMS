@@ -149,6 +149,7 @@ class MockInterview {
         TIME_FORMAT(m.start_time, '%H:%i') as start_time,
         m.default_duration_mins,
         m.meet_link,
+        m.whatsapp_template,
         m.status,
         m.created_by,
         m.created_at,
@@ -218,6 +219,7 @@ class MockInterview {
         TIME_FORMAT(m.start_time, '%H:%i') as start_time,
         m.default_duration_mins,
         m.meet_link,
+        m.whatsapp_template,
         m.status,
         m.created_by,
         m.created_at,
@@ -269,6 +271,7 @@ class MockInterview {
     startTime,
     defaultDurationMins,
     meetLink,
+    whatsappTemplate,
     batchIds = null,
     status = null
   }) {
@@ -296,6 +299,7 @@ class MockInterview {
       if (startTime !== undefined) { updates.push('start_time = ?'); params.push(startTime); }
       if (defaultDurationMins !== undefined) { updates.push('default_duration_mins = ?'); params.push(defaultDurationMins); }
       if (meetLink !== undefined) { updates.push('meet_link = ?'); params.push(meetLink); }
+      if (whatsappTemplate !== undefined) { updates.push('whatsapp_template = ?'); params.push(whatsappTemplate); }
       if (status !== undefined) { updates.push('status = ?'); params.push(status); }
 
       if (updates.length > 0) {
@@ -377,6 +381,17 @@ class MockInterview {
     const [result] = await pool.execute(
       'UPDATE mock_interview_events SET meet_link = ? WHERE id = ?',
       [meetLink || null, id]
+    );
+    return result.affectedRows > 0;
+  }
+
+  /**
+   * Update WhatsApp template directly
+   */
+  static async updateWhatsAppTemplate(id, template) {
+    const [result] = await pool.execute(
+      'UPDATE mock_interview_events SET whatsapp_template = ? WHERE id = ?',
+      [template !== undefined ? template : null, id]
     );
     return result.affectedRows > 0;
   }

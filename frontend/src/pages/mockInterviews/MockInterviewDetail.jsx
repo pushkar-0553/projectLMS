@@ -10,6 +10,7 @@ import CreateMockModal from '../../components/mockInterviews/CreateMockModal';
 import EditMeetLinkModal from '../../components/mockInterviews/EditMeetLinkModal';
 import NotInterestedModal from '../../components/mockInterviews/NotInterestedModal';
 import CompleteInterviewModal from '../../components/mockInterviews/CompleteInterviewModal';
+import CustomizeWhatsAppModal from '../../components/mockInterviews/CustomizeWhatsAppModal';
 
 const getEventStatusBadge = (status) => {
   switch (status) {
@@ -45,6 +46,9 @@ const MockInterviewDetail = () => {
   // Modals
   const [showEditModal, setShowEditModal] = useState(false);
   const [showMeetLinkModal, setShowMeetLinkModal] = useState(false);
+  const [showCustomizeWAModal, setShowCustomizeWAModal] = useState(false);
+  const [customWATemplate, setCustomWATemplate] = useState('');
+  const [savingTemplate, setSavingTemplate] = useState(false);
   const [notInterestedStudent, setNotInterestedStudent] = useState(null);
   const [completeStudent, setCompleteStudent] = useState(null);
   const [actionLoading, setActionLoading] = useState(false);
@@ -84,12 +88,33 @@ const MockInterviewDetail = () => {
       if (eventRes.data) {
         setSlotStartTime(eventRes.data.start_time || '10:00');
         setSlotDuration(eventRes.data.default_duration_mins || 20);
+        // Sync custom WhatsApp template from database or local storage
+        const savedLocal = localStorage.getItem(`mock_wa_template_${eventRes.data.id}`);
+        if (eventRes.data.whatsapp_template) {
+          setCustomWATemplate(eventRes.data.whatsapp_template);
+        } else if (savedLocal) {
+          setCustomWATemplate(savedLocal);
+        }
       }
     } catch (err) {
       console.error('Failed to load mock interview:', err);
       setError('Failed to load mock interview details. Please reload.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleSaveWhatsAppTemplate = async (newTemplate) => {
+    try {
+      setSavingTemplate(true);
+      setCustomWATemplate(newTemplate);
+      localStorage.setItem(`mock_wa_template_${id}`, newTemplate);
+      await mockInterviewAPI.updateWhatsAppTemplate(id, newTemplate);
+      setEvent(prev => (prev ? { ...prev, whatsapp_template: newTemplate } : prev));
+    } catch (err) {
+      console.warn('Backend update error, template saved locally:', err);
+    } finally {
+      setSavingTemplate(false);
     }
   };
 
@@ -364,6 +389,15 @@ const MockInterviewDetail = () => {
           )}
 
           <button
+            onClick={() => setShowCustomizeWAModal(true)}
+            className="mock-btn-secondary"
+            style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
+            title="Customize WhatsApp message template for this drive"
+          >
+            💬 Customize Message {customWATemplate ? '✨' : ''}
+          </button>
+
+          <button
             onClick={() => setShowEditModal(true)}
             className="mock-btn-secondary"
             style={{ width: '100%' }}
@@ -446,6 +480,47 @@ const MockInterviewDetail = () => {
               ))}
               <option value="unassigned">⚠️ Unassigned Students Only</option>
             </select>
+
+            {/* Customize WhatsApp Message Button at the top of the list */}
+            <button
+              onClick={() => setShowCustomizeWAModal(true)}
+              className="mock-customize-wa-btn"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '9px 14px',
+                borderRadius: '10px',
+                border: customWATemplate ? '1.5px solid #10b981' : '1px solid #cbd5e1',
+                background: customWATemplate ? '#ecfdf5' : '#ffffff',
+                color: customWATemplate ? '#065f46' : '#334155',
+                fontSize: '13px',
+                fontWeight: '600',
+                cursor: 'pointer',
+                height: '42px',
+                boxSizing: 'border-box',
+                width: isMobile ? '100%' : 'auto',
+                justifyContent: 'center',
+                boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+                transition: 'all 0.15s ease'
+              }}
+              title="Customize WhatsApp message template sent to candidates"
+            >
+              <span>💬</span>
+              <span>Customize Message</span>
+              {customWATemplate && (
+                <span style={{
+                  fontSize: '10px',
+                  background: '#10b981',
+                  color: '#fff',
+                  padding: '2px 6px',
+                  borderRadius: '6px',
+                  fontWeight: '700'
+                }}>
+                  ACTIVE
+                </span>
+              )}
+            </button>
           </div>
         </div>
 
@@ -533,6 +608,7 @@ const MockInterviewDetail = () => {
                   key={student.student_id}
                   student={student}
                   mockEvent={event}
+                  customTemplate={customWATemplate}
                   onMarkInterested={handleMarkInterested}
                   onOpenNotInterestedModal={setNotInterestedStudent}
                   onStartInterview={handleStartInterview}
@@ -545,6 +621,7 @@ const MockInterviewDetail = () => {
           <MockStudentTable
             students={filteredStudents}
             mockEvent={event}
+            customTemplate={customWATemplate}
             onMarkInterested={handleMarkInterested}
             onOpenNotInterestedModal={setNotInterestedStudent}
             onStartInterview={handleStartInterview}
@@ -588,6 +665,17 @@ const MockInterviewDetail = () => {
         student={completeStudent}
         onConfirm={handleConfirmComplete}
         loading={actionLoading}
+      />
+
+      {/* Customize WhatsApp Message Template Modal */}
+      <CustomizeWhatsAppModal
+        isOpen={showCustomizeWAModal}
+        onClose={() => setShowCustomizeWAModal(false)}
+        mockEvent={event}
+        currentTemplate={customWATemplate}
+        sampleStudent={filteredStudents[0] || students[0]}
+        onSaveTemplate={handleSaveWhatsAppTemplate}
+        loading={savingTemplate}
       />
     </div>
   );

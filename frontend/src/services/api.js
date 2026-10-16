@@ -345,6 +345,7 @@ export const mockInterviewAPI = {
   getById: (id) => api.get(`/mock-interviews/${id}`),
   update: (id, data) => api.put(`/mock-interviews/${id}`, data),
   updateMeetLink: (id, meetLink) => api.patch(`/mock-interviews/${id}/meet-link`, { meet_link: meetLink }),
+  updateWhatsAppTemplate: (id, template) => api.patch(`/mock-interviews/${id}/whatsapp-template`, { whatsapp_template: template }),
   delete: (id) => api.delete(`/mock-interviews/${id}`),
   getStudents: (id, params) => api.get(`/mock-interviews/${id}/students`, { params }),
   updateParticipantStatus: (id, studentId, data) => api.post(`/mock-interviews/${id}/participants/${studentId}/status`, data),

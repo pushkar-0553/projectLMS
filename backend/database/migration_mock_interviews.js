@@ -16,6 +16,7 @@ async function runMigration() {
         start_time TIME NOT NULL DEFAULT '10:00:00',
         default_duration_mins INT NOT NULL DEFAULT 20,
         meet_link VARCHAR(500) NULL,
+        whatsapp_template TEXT NULL,
         status ENUM('UPCOMING', 'ONGOING', 'COMPLETED') DEFAULT 'UPCOMING',
         created_by INT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,

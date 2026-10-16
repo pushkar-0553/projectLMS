@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
 import styles from '../../pages/mockInterviews/MockInterviewsPage.styles';
+import { generateMockWhatsAppLink } from '../../utils/mockWhatsAppUtils';
 
 const getStatusBadgeStyle = (status) => {
   switch (status) {
@@ -24,27 +25,17 @@ const MockStudentCard = ({
   onMarkInterested,
   onOpenNotInterestedModal,
   onStartInterview,
-  onOpenCompleteModal
+  onOpenCompleteModal,
+  customTemplate
 }) => {
   const badgeConfig = getStatusBadgeStyle(student.status);
 
-  // Memoized WhatsApp prefilled message
+  // Memoized WhatsApp customized message link
   const waLink = useMemo(() => {
     if (!student.student_mobile) return '#';
-    const cleanPhone = student.student_mobile.replace(/\D/g, '');
-    const phoneWithCountry = cleanPhone.length === 10 ? `91${cleanPhone}` : cleanPhone;
-
-    const slotInfo = student.scheduled_start
-      ? `Scheduled Slot: ${student.scheduled_start} to ${student.scheduled_end}`
-      : 'Interview details will be shared shortly.';
-    const meetInfo = mockEvent?.meet_link ? `\nMeet Link: ${mockEvent.meet_link}` : '';
-
-    const text = encodeURIComponent(
-      `Hello ${student.student_name},\n\nRegarding your upcoming mock interview for "${mockEvent?.title || 'Mock Interview'}" on ${mockEvent?.interview_date || 'the scheduled date'}:\n\n${slotInfo}${meetInfo}\n\nPlease be prepared on time. Best regards!`
-    );
-
-    return `https://wa.me/${phoneWithCountry}?text=${text}`;
-  }, [student.student_mobile, student.student_name, student.scheduled_start, student.scheduled_end, mockEvent?.title, mockEvent?.interview_date, mockEvent?.meet_link]);
+    const activeTemplate = customTemplate || mockEvent?.whatsapp_template;
+    return generateMockWhatsAppLink(student.student_mobile, activeTemplate, student, mockEvent);
+  }, [student, mockEvent, customTemplate]);
 
   // Memoized timing delay calculation
   const delayMinutes = useMemo(() => {
