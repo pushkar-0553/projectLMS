@@ -223,9 +223,9 @@ const MockInterviewDetail = () => {
     }
   };
 
-  // Optimized memoized student filtering based on activeTab, searchQuery, and selectedBatchFilter
+  // Optimized memoized student filtering and batch-wise sorting
   const filteredStudents = useMemo(() => {
-    return students.filter(s => {
+    const list = students.filter(s => {
       // 1. Tab filter
       if (activeTab === 'interested') {
         if (!['INTERESTED', 'SCHEDULED', 'IN_PROGRESS', 'COMPLETED'].includes(s.status)) return false;
@@ -253,6 +253,34 @@ const MockInterviewDetail = () => {
       }
 
       return true;
+    });
+
+    return list.sort((a, b) => {
+      // In interested tab, if slots have been allocated, follow slot_order sequence
+      if (activeTab === 'interested') {
+        if (a.slot_order && b.slot_order) return a.slot_order - b.slot_order;
+        if (a.slot_order && !b.slot_order) return -1;
+        if (!a.slot_order && b.slot_order) return 1;
+      }
+
+      // Batch-wise order (Batch 1, Batch 2, Batch 3...), then candidate name (A-Z)
+      const hasBatchA = Boolean(a.is_assigned && a.batch_name);
+      const hasBatchB = Boolean(b.is_assigned && b.batch_name);
+
+      if (hasBatchA && !hasBatchB) return -1;
+      if (!hasBatchA && hasBatchB) return 1;
+
+      if (hasBatchA && hasBatchB && a.batch_name !== b.batch_name) {
+        const batchCmp = a.batch_name.localeCompare(b.batch_name, undefined, {
+          numeric: true,
+          sensitivity: 'base'
+        });
+        if (batchCmp !== 0) return batchCmp;
+      }
+
+      return (a.student_name || '').localeCompare(b.student_name || '', undefined, {
+        sensitivity: 'base'
+      });
     });
   }, [students, activeTab, selectedBatchFilter, searchQuery]);
 
@@ -540,10 +568,10 @@ const MockInterviewDetail = () => {
           }}>
             <div>
               <strong style={{ fontSize: '14px', color: '#1e293b', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                ⚡ Automatic Sequential Slot Generator
+                ⚡ Batch-Wise Sequential Slot Generator
               </strong>
               <p style={{ margin: '2px 0 0', fontSize: '12px', color: '#64748b' }}>
-                Assigns sequential, non-overlapping interview slots to all interested candidates.
+                Assigns slots sequentially batch-by-batch (Batch 1, Batch 2...) and alphabetically by name within each batch.
               </p>
             </div>
 

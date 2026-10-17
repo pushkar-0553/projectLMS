@@ -447,14 +447,19 @@ class MockInterview {
     const whereSQL = `WHERE ${whereClauses.join(' AND ')}`;
 
     // Order: For interested/scheduled view, sort by slot_order then scheduled_start.
-    // For general list, sort by name ASC.
+    // Group batch-wise, then candidate name-wise.
     const orderSQL = isInterestedView
       ? `ORDER BY 
           CASE WHEN p.slot_order IS NOT NULL THEN 0 ELSE 1 END,
           p.slot_order ASC,
           p.scheduled_start ASC,
+          CASE WHEN b.name IS NOT NULL THEN 0 ELSE 1 END,
+          b.name ASC,
           u.name ASC`
-      : 'ORDER BY u.name ASC';
+      : `ORDER BY 
+          CASE WHEN b.name IS NOT NULL THEN 0 ELSE 1 END,
+          b.name ASC,
+          u.name ASC`;
 
     const [rows] = await pool.execute(
       `SELECT 
@@ -520,6 +525,14 @@ class MockInterview {
       params.push(feedbackNotes || null);
     }
 
+    // If changing to NOT_INTERESTED (candidate drop-off or decline), clear slot allocations
+    if (status === 'NOT_INTERESTED') {
+      updates.push('slot_order = NULL', 'scheduled_start = NULL', 'scheduled_end = NULL');
+    } else if (status === 'INTERESTED' && reason === undefined) {
+      // If changing back to interested, clear any previous decline reason
+      updates.push('not_interested_reason = NULL');
+    }
+
     params.push(mockInterviewId, studentId);
 
     const [result] = await pool.execute(
@@ -534,6 +547,7 @@ class MockInterview {
 
   /**
    * Deterministic Sequential Slot Generation for Interested Students
+   * Grouped batch-wise (Batch 1, Batch 2, Batch 3...), and alphabetical by candidate name within each batch
    */
   static async generateSlots(mockInterviewId, { startTime = null, durationMins = null } = {}) {
     const connection = await pool.getConnection();
@@ -552,18 +566,16 @@ class MockInterview {
       const effectiveStartTime = startTime || mockRows[0].start_time || '10:00:00';
       const effectiveDuration = parseInt(durationMins || mockRows[0].default_duration_mins, 10) || 20;
 
-      // Fetch all interested students (INTERESTED, SCHEDULED, IN_PROGRESS, COMPLETED)
-      // Ordered by existing slot_order or student name
+      // Fetch all interested students (INTERESTED, SCHEDULED, IN_PROGRESS, COMPLETED) with batch details
       const [participants] = await connection.execute(
-        `SELECT p.id, p.student_id, p.status, p.slot_order, u.name
+        `SELECT p.id, p.student_id, p.status, p.slot_order, u.name,
+                b.id as batch_id, b.name as batch_name
          FROM mock_interview_participants p
          JOIN Users u ON p.student_id = u.id
+         LEFT JOIN StudentBatchMap sbm ON u.id = sbm.student_id
+         LEFT JOIN Batches b ON sbm.batch_id = b.id
          WHERE p.mock_interview_id = ?
-           AND p.status IN ('INTERESTED', 'SCHEDULED', 'IN_PROGRESS', 'COMPLETED')
-         ORDER BY 
-           CASE WHEN p.slot_order IS NOT NULL THEN 0 ELSE 1 END,
-           p.slot_order ASC,
-           u.name ASC`,
+           AND p.status IN ('INTERESTED', 'SCHEDULED', 'IN_PROGRESS', 'COMPLETED')`,
         [mockInterviewId]
       );
 
@@ -571,6 +583,30 @@ class MockInterview {
         await connection.commit();
         return { count: 0, slots: [] };
       }
+
+      // Sort batch-wise (Batch 1, Batch 2, Batch 3...), then alphabetical name-wise within each batch
+      participants.sort((a, b) => {
+        const hasBatchA = Boolean(a.batch_name);
+        const hasBatchB = Boolean(b.batch_name);
+
+        // Assigned batches come before unassigned
+        if (hasBatchA && !hasBatchB) return -1;
+        if (!hasBatchA && hasBatchB) return 1;
+
+        if (hasBatchA && hasBatchB && a.batch_name !== b.batch_name) {
+          // Natural alphanumeric sort so "Batch 1" < "Batch 2" < "Batch 10"
+          const batchCmp = a.batch_name.localeCompare(b.batch_name, undefined, {
+            numeric: true,
+            sensitivity: 'base'
+          });
+          if (batchCmp !== 0) return batchCmp;
+        }
+
+        // Within the same batch, order by candidate name (A-Z)
+        return (a.name || '').localeCompare(b.name || '', undefined, {
+          sensitivity: 'base'
+        });
+      });
 
       let currentMinute = MockInterview.timeStringToMinutes(effectiveStartTime);
       const generatedSlots = [];
@@ -601,6 +637,7 @@ class MockInterview {
           slot_order: slotOrder,
           scheduled_start: scheduledStart.substring(0, 5),
           scheduled_end: scheduledEnd.substring(0, 5),
+          batch_name: p.batch_name || 'Unassigned',
           status: newStatus
         });
       }

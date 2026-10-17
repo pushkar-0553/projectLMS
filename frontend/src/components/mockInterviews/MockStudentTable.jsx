@@ -228,16 +228,32 @@ const MockStudentTable = ({
                         >
                           Complete
                         </button>
+                        <button
+                          onClick={() => onOpenNotInterestedModal(s)}
+                          style={styles.dropOffBtn}
+                          title="Candidate dropped off / will not attend"
+                        >
+                          🚫 Drop Off
+                        </button>
                       </>
                     )}
 
                     {s.status === 'IN_PROGRESS' && (
-                      <button
-                        onClick={() => onOpenCompleteModal(s)}
-                        style={styles.completeBtn}
-                      >
-                        Finish & Complete
-                      </button>
+                      <>
+                        <button
+                          onClick={() => onOpenCompleteModal(s)}
+                          style={styles.completeBtn}
+                        >
+                          Finish & Complete
+                        </button>
+                        <button
+                          onClick={() => onOpenNotInterestedModal(s)}
+                          style={styles.dropOffBtn}
+                          title="Candidate dropped off / will not attend"
+                        >
+                          🚫 Drop Off
+                        </button>
+                      </>
                     )}
 
                     {s.status === 'COMPLETED' && (

@@ -198,17 +198,35 @@ const MockStudentCard = ({
               >
                 ✓ Mark Completed
               </button>
+              <button
+                onClick={() => onOpenNotInterestedModal(student)}
+                className="mock-status-btn"
+                style={{ background: '#fee2e2', color: '#dc2626', border: '1px solid #fca5a5' }}
+                title="Candidate dropped off / will not attend"
+              >
+                🚫 Drop Off
+              </button>
             </>
           )}
 
           {student.status === 'IN_PROGRESS' && (
-            <button
-              onClick={() => onOpenCompleteModal(student)}
-              className="mock-status-btn"
-              style={{ background: '#10b981', color: '#ffffff' }}
-            >
-              ✓ Finish & Complete
-            </button>
+            <>
+              <button
+                onClick={() => onOpenCompleteModal(student)}
+                className="mock-status-btn"
+                style={{ background: '#10b981', color: '#ffffff' }}
+              >
+                ✓ Finish & Complete
+              </button>
+              <button
+                onClick={() => onOpenNotInterestedModal(student)}
+                className="mock-status-btn"
+                style={{ background: '#fee2e2', color: '#dc2626', border: '1px solid #fca5a5' }}
+                title="Candidate dropped off / will not attend"
+              >
+                🚫 Drop Off
+              </button>
+            </>
           )}
 
           {student.status === 'COMPLETED' && (

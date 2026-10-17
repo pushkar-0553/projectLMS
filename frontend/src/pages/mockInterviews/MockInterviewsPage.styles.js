@@ -357,6 +357,20 @@ const styles = {
     fontWeight: '700',
     cursor: 'pointer'
   },
+  dropOffBtn: {
+    padding: '6px 10px',
+    background: '#fee2e2',
+    color: '#dc2626',
+    border: '1px solid #fca5a5',
+    borderRadius: '6px',
+    fontSize: '12px',
+    fontWeight: '700',
+    cursor: 'pointer',
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '4px',
+    transition: 'all 0.15s ease'
+  },
   grid: {
     display: 'grid',
     gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
