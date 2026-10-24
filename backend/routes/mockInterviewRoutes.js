@@ -3,9 +3,8 @@ const router = express.Router();
 const mockInterviewController = require('../controllers/mockInterviewController');
 const { protect, authorize } = require('../middleware/authMiddleware');
 
-// Strictly internal routes for Admin and Coordinator
-router.use(protect);
-router.use(authorize('admin', 'coordinator'));
+// Strictly internal routes for Admin and Coordinator (scoped to /mock-interviews)
+router.use('/mock-interviews', protect, authorize('admin', 'coordinator'));
 
 // Mock Interview Drives & Events
 router.post('/mock-interviews', mockInterviewController.createMockInterview);

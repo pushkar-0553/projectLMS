@@ -30,7 +30,7 @@ api.interceptors.request.use(
       'login', 'super-admin', 'resumes', 'public', 'users', 'admin',
       'coordinator', 'student', 'dashboard', 'my-progress', 'academic-progress',
       'project-learning', 'guided-learning', 'messages', 'notifications',
-      'change-password', 'faculty', 'exam'
+      'change-password', 'faculty', 'exam', 'mock-interviews', 'feedback'
     ];
     if (pathParts.length > 0 && !reserved.includes(pathParts[0])) {
       config.headers['X-Course-Slug'] = pathParts[0];
@@ -63,7 +63,15 @@ api.interceptors.response.use(
       localStorage.removeItem('token');
       localStorage.removeItem('activeCourseSlug');
       // Only redirect if not already on the login or public pages
-      if (!window.location.pathname.startsWith('/login') && !window.location.pathname.startsWith('/public')) {
+      const currentPath = window.location.pathname;
+      const isPublicRoute = 
+        currentPath.startsWith('/login') ||
+        currentPath.startsWith('/public') ||
+        currentPath.includes('/feedback/share') ||
+        currentPath.includes('/resumes/share') ||
+        currentPath.includes('/exam/');
+
+      if (!isPublicRoute) {
         window.location.href = '/login';
       }
     }
@@ -352,6 +360,34 @@ export const mockInterviewAPI = {
   generateSlots: (id, data) => api.post(`/mock-interviews/${id}/generate-slots`, data),
   startInterview: (id, studentId, data = {}) => api.post(`/mock-interviews/${id}/participants/${studentId}/start`, data),
   completeInterview: (id, studentId, data = {}) => api.post(`/mock-interviews/${id}/participants/${studentId}/complete`, data)
+};
+
+export const feedbackAPI = {
+  create: (data) => api.post('/feedback', data),
+  getAll: (params) => api.get('/feedback', { params }),
+  getById: (id) => api.get(`/feedback/${id}`),
+  update: (id, data) => api.put(`/feedback/${id}`, data),
+  delete: (id) => api.delete(`/feedback/${id}`),
+  getStudents: (id, params) => api.get(`/feedback/${id}/students`, { params }),
+  getStudentResponse: (id, studentId) => api.get(`/feedback/${id}/responses/${studentId}`),
+  submitResponse: (id, data) => api.post(`/feedback/${id}/responses`, data),
+  updateStudentResponse: (id, studentId, data) => api.put(`/feedback/${id}/responses/${studentId}`, data),
+
+  // Public student unique link methods
+  getPublicFeedback: (token) => api.get(`/public/feedback/${token}`),
+  submitPublicFeedback: (token, data) => api.post(`/public/feedback/${token}/submit`, data),
+  requestPublicEditAccess: (token, data) => api.post(`/public/feedback/${token}/request-edit`, data),
+
+  // Coordinator edit request management
+  getEditRequests: (id) => api.get(`/feedback/${id}/edit-requests`),
+  allowEditAccess: (id, studentId) => api.post(`/feedback/${id}/links/${studentId}/allow-edit`),
+  rejectEditAccess: (id, studentId) => api.post(`/feedback/${id}/links/${studentId}/reject-edit`),
+
+  // URL helper
+  getPublicShareUrl: (token) => {
+    const origin = typeof window !== 'undefined' ? window.location.origin : '';
+    return `${origin}/feedback/share/${token}`;
+  }
 };
 
 export default api;

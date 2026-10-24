@@ -69,6 +69,9 @@ const StudentExamPortal = lazy(() => import('./pages/exams/StudentExamPortal'))
 const StudentExamsPage = lazy(() => import('./pages/student/StudentExamsPage'))
 const MockInterviewsList = lazy(() => import('./pages/mockInterviews/MockInterviewsList'))
 const MockInterviewDetail = lazy(() => import('./pages/mockInterviews/MockInterviewDetail'))
+const FeedbackList = lazy(() => import('./pages/feedback/FeedbackList'))
+const FeedbackDetail = lazy(() => import('./pages/feedback/FeedbackDetail'))
+const PublicFeedbackPage = lazy(() => import('./pages/feedback/PublicFeedbackPage'))
 
 const PageLoader = () => (
   <div className="loading" style={{ minHeight: '60vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -81,6 +84,7 @@ const isAdminOrSuper = (user) => user?.role === 'admin' || user?.role === 'super
 const isCoordinatorOrAbove = (user) => user?.role === 'coordinator' || user?.role === 'faculty' || user?.role === 'admin' || user?.role === 'super_admin';
 const isFacultyOrAbove = (user) => user?.role === 'faculty' || user?.role === 'coordinator' || user?.role === 'admin' || user?.role === 'super_admin';
 const isMockInterviewsAuthorized = (user) => user?.role === 'coordinator' || user?.role === 'admin' || user?.role === 'super_admin';
+const isFeedbackAuthorized = (user) => user?.role === 'coordinator' || user?.role === 'admin' || user?.role === 'super_admin';
 
 const getRoleHomeRedirect = (user) => {
   if (!user) return '/login';
@@ -175,6 +179,10 @@ function App() {
         <Route path="/exam/:assignmentCode" element={<StudentExamPortal />} />
         <Route path="/:courseSlug/exam/:assignmentCode" element={<StudentExamPortal />} />
 
+        {/* Public Student Feedback Share Portal */}
+        <Route path="/feedback/share/:token" element={<PublicFeedbackPage />} />
+        <Route path="/:courseSlug/feedback/share/:token" element={<PublicFeedbackPage />} />
+
         {/* Protected Mock Interviews Routes (Admin, Coordinator & Super Admin Only) with Sidebar Layout */}
         <Route 
           path="/mock-interviews" 
@@ -249,6 +257,88 @@ function App() {
               ) : (
                 <AdminLayout>
                   <MockInterviewDetail />
+                </AdminLayout>
+              )
+            ) : (
+              <Navigate to={getRoleHomeRedirect(user)} replace />
+            )
+          } 
+        />
+        
+        {/* Student Feedback Hub Routes */}
+        <Route 
+          path="/feedback" 
+          element={
+            !user ? (
+              <Navigate to="/login" replace />
+            ) : isFeedbackAuthorized(user) ? (
+              user?.role === 'coordinator' || user?.role === 'faculty' ? (
+                <CoordinatorLayout>
+                  <FeedbackList />
+                </CoordinatorLayout>
+              ) : (
+                <AdminLayout>
+                  <FeedbackList />
+                </AdminLayout>
+              )
+            ) : (
+              <Navigate to={getRoleHomeRedirect(user)} replace />
+            )
+          } 
+        />
+        <Route 
+          path="/:courseSlug/feedback" 
+          element={
+            !user ? (
+              <Navigate to="/login" replace />
+            ) : isFeedbackAuthorized(user) ? (
+              user?.role === 'coordinator' || user?.role === 'faculty' ? (
+                <CoordinatorLayout>
+                  <FeedbackList />
+                </CoordinatorLayout>
+              ) : (
+                <AdminLayout>
+                  <FeedbackList />
+                </AdminLayout>
+              )
+            ) : (
+              <Navigate to={getRoleHomeRedirect(user)} replace />
+            )
+          } 
+        />
+        <Route 
+          path="/feedback/:id" 
+          element={
+            !user ? (
+              <Navigate to="/login" replace />
+            ) : isFeedbackAuthorized(user) ? (
+              user?.role === 'coordinator' || user?.role === 'faculty' ? (
+                <CoordinatorLayout>
+                  <FeedbackDetail />
+                </CoordinatorLayout>
+              ) : (
+                <AdminLayout>
+                  <FeedbackDetail />
+                </AdminLayout>
+              )
+            ) : (
+              <Navigate to={getRoleHomeRedirect(user)} replace />
+            )
+          } 
+        />
+        <Route 
+          path="/:courseSlug/feedback/:id" 
+          element={
+            !user ? (
+              <Navigate to="/login" replace />
+            ) : isFeedbackAuthorized(user) ? (
+              user?.role === 'coordinator' || user?.role === 'faculty' ? (
+                <CoordinatorLayout>
+                  <FeedbackDetail />
+                </CoordinatorLayout>
+              ) : (
+                <AdminLayout>
+                  <FeedbackDetail />
                 </AdminLayout>
               )
             ) : (

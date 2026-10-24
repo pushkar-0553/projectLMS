@@ -29,6 +29,7 @@ const AdminLayout = ({ children }) => {
     { path: `${baseAdmin}/exams`, icon: CheckSquare, label: 'Written Exams' },
     { path: courseSlug ? `/${courseSlug}/resumes` : '/resumes', icon: FileText, label: 'Resume Hub' },
     { path: courseSlug ? `/${courseSlug}/mock-interviews` : '/mock-interviews', icon: Video, label: 'Mock Interviews' },
+    { path: courseSlug ? `/${courseSlug}/feedback` : '/feedback', icon: MessageSquare, label: 'Feedback' },
     { path: `${baseAdmin}/users`, icon: UserCog, label: 'Users' },
     { path: `${baseAdmin}/history`, icon: History, label: 'System History' },
     ...(user?.role === 'super_admin' ? [
@@ -67,7 +68,7 @@ const AdminLayout = ({ children }) => {
               <li key={item.path} className="nav-item">
                 <Link 
                   to={item.path} 
-                  className={`nav-link ${(location.pathname === item.path || (item.path.includes('mock-interviews') && location.pathname.includes('mock-interviews'))) ? 'active' : ''}`}
+                  className={`nav-link ${(location.pathname === item.path || (item.path.includes('mock-interviews') && location.pathname.includes('mock-interviews')) || (item.path.includes('feedback') && location.pathname.includes('feedback'))) ? 'active' : ''}`}
                   style={item.isSpecial ? { color: '#38bdf8', borderLeftColor: '#38bdf8' } : undefined}
                 >
                   <item.icon size={20} />

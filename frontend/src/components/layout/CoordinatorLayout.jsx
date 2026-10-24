@@ -28,6 +28,7 @@ const CoordinatorLayout = ({ children }) => {
     { path: `${baseCoord}/exams`, icon: CheckSquare, label: 'Written Exams' },
     { path: courseSlug ? `/${courseSlug}/resumes` : '/resumes', icon: FileText, label: 'Resume Hub' },
     { path: courseSlug ? `/${courseSlug}/mock-interviews` : '/mock-interviews', icon: Video, label: 'Mock Interviews' },
+    { path: courseSlug ? `/${courseSlug}/feedback` : '/feedback', icon: MessageSquare, label: 'Feedback' },
     ...(user?.role === 'faculty' ? [
       { path: `${baseCoord}/guidance`, icon: BookOpen, label: 'Guidance' },
       { path: `${baseCoord}/interviews`, icon: Video, label: 'Mock Interviews' }
@@ -64,7 +65,7 @@ const CoordinatorLayout = ({ children }) => {
           <ul className="nav-list">
             {navItems.map((item) => (
               <li key={item.path} className="nav-item">
-                <Link to={item.path} className={`nav-link ${(location.pathname === item.path || (item.path.includes('mock-interviews') && location.pathname.includes('mock-interviews'))) ? 'active' : ''}`}>
+                <Link to={item.path} className={`nav-link ${(location.pathname === item.path || (item.path.includes('mock-interviews') && location.pathname.includes('mock-interviews')) || (item.path.includes('feedback') && location.pathname.includes('feedback'))) ? 'active' : ''}`}>
                   <item.icon size={20} />
                   <span className="nav-label">{item.label}</span>
                 </Link>
