@@ -133,7 +133,11 @@ const FeedbackDetail = () => {
           setCampaign(prev => ({ ...prev, share_token: res.data.share_token }));
         }
       }
-      feedbackAPI.getReportData(id).then(rRes => setReportData(rRes.data || null)).catch(() => {});
+      feedbackAPI.getReportData(id).then(rRes => {
+        if (rRes && rRes.data) {
+          setReportData(rRes.data);
+        }
+      }).catch(() => {});
     } catch (e) {
       console.error('Error pre-generating share token on click:', e);
     }

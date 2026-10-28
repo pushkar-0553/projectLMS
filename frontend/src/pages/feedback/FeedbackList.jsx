@@ -35,7 +35,11 @@ const FeedbackList = () => {
           loadCampaigns();
         }
       }
-      feedbackAPI.getReportData(c.id).then(rRes => setShareReportData(rRes.data || null)).catch(() => {});
+      feedbackAPI.getReportData(c.id).then(rRes => {
+        if (rRes && rRes.data) {
+          setShareReportData(rRes.data);
+        }
+      }).catch(() => {});
     } catch (err) {
       console.error('Failed to pre-generate share token:', err);
     }

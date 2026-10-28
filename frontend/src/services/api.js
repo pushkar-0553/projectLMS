@@ -385,10 +385,16 @@ export const feedbackAPI = {
   rejectEditAccess: (id, studentId) => api.post(`/feedback/${id}/links/${studentId}/reject-edit`),
 
   // Common Report Data & Share Catalog
-  getReportData: (id) => api.get(`/feedback/${id}/report`),
+  getReportData: (id) => api.get(`/feedback/${id}/report`, {
+    headers: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' },
+    params: { _t: Date.now() }
+  }),
   generateShareToken: (id) => api.post(`/feedback/${id}/share-token`),
   revokeShareToken: (id) => api.delete(`/feedback/${id}/share-token`),
-  getPublicCatalog: (token) => api.get(`/public/feedback/catalog/${token}`),
+  getPublicCatalog: (token) => api.get(`/public/feedback/catalog/${token}`, {
+    headers: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' },
+    params: { _t: Date.now() }
+  }),
 
   // URL helpers
   getPublicShareUrl: (token) => {

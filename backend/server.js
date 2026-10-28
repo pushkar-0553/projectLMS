@@ -36,6 +36,15 @@ const rateLimit = require('express-rate-limit');
 const { initSocket } = require('./socket');
 
 const app = express();
+// Disable ETag and 304 Not Modified responses on dynamic API routes
+app.set('etag', false);
+app.use('/api', (req, res, next) => {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+  res.set('Pragma', 'no-cache');
+  res.set('Expires', '0');
+  next();
+});
+
 const { perfMiddleware } = require('./utils/perfTracker');
 app.use(perfMiddleware);
 const server = http.createServer(app);

@@ -389,6 +389,9 @@ const feedbackController = {
       if (!report) {
         return res.status(404).json({ message: 'Feedback campaign not found' });
       }
+      res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+      res.set('Pragma', 'no-cache');
+      res.set('Expires', '0');
       return res.json(report);
     } catch (err) {
       console.error('[FeedbackController] getReportData error:', err);

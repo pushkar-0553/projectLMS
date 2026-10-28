@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   X, 
   Share2, 
@@ -33,13 +33,11 @@ const FeedbackShareModal = ({
   const [exportingPdf, setExportingPdf] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
-  if (!isOpen || !campaign) return null;
-
-  const currentToken = campaign.share_token || reportData?.campaign?.share_token;
+  const currentToken = campaign?.share_token || reportData?.campaign?.share_token;
   const shareCatalogUrl = currentToken ? feedbackAPI.getCatalogShareUrl(currentToken) : '';
 
   // Auto-generate share token if not yet created when opening modal
-  React.useEffect(() => {
+  useEffect(() => {
     if (isOpen && campaign?.id && !campaign.share_token && !reportData?.campaign?.share_token && !generatingLink) {
       handleGenerateLink();
     }
@@ -129,6 +127,8 @@ const FeedbackShareModal = ({
       setTimeout(() => setExportingPdf(false), 1200);
     }
   };
+
+  if (!isOpen || !campaign) return null;
 
   return (
     <div className="fb-modal-overlay" style={styles.modalOverlay} onClick={onClose}>

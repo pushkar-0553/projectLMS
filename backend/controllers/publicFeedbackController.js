@@ -162,6 +162,10 @@ const publicFeedbackController = {
         return res.status(404).json({ message: 'Feedback report link is invalid or expired' });
       }
 
+      res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+      res.set('Pragma', 'no-cache');
+      res.set('Expires', '0');
+
       return res.json({
         success: true,
         data: report
