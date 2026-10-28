@@ -1,5 +1,6 @@
 const Feedback = require('../models/feedbackModel');
 const Course = require('../models/courseModel');
+const documentService = require('../services/documentService');
 
 // Helper to resolve course ID from request (body, query, headers, or user session)
 async function resolveCourseId(req) {
@@ -374,6 +375,113 @@ const feedbackController = {
     } catch (err) {
       console.error('[FeedbackController] getEditRequests error:', err);
       return res.status(500).json({ message: 'Failed to load edit requests' });
+    }
+  },
+
+  /**
+   * GET /api/feedback/:id/report
+   * Common report data for Viewer, Flipbook, Catalog, and Exports
+   */
+  async getReportData(req, res) {
+    try {
+      const { id } = req.params;
+      const report = await Feedback.getReportData(id);
+      if (!report) {
+        return res.status(404).json({ message: 'Feedback campaign not found' });
+      }
+      return res.json(report);
+    } catch (err) {
+      console.error('[FeedbackController] getReportData error:', err);
+      return res.status(500).json({ message: 'Failed to load report data' });
+    }
+  },
+
+  /**
+   * POST /api/feedback/:id/share-token
+   * Generate or renew public share token for this feedback campaign
+   */
+  async generateShareToken(req, res) {
+    try {
+      const { id } = req.params;
+      const campaign = await Feedback.getById(id);
+      if (!campaign) {
+        return res.status(404).json({ message: 'Feedback campaign not found' });
+      }
+      const token = await Feedback.generateCampaignShareToken(id);
+      return res.json({
+        success: true,
+        share_token: token,
+        message: 'Share link generated successfully.'
+      });
+    } catch (err) {
+      console.error('[FeedbackController] generateShareToken error:', err);
+      return res.status(500).json({ message: 'Failed to generate share token' });
+    }
+  },
+
+  /**
+   * DELETE /api/feedback/:id/share-token
+   * Revoke public share link for this feedback campaign
+   */
+  async revokeShareToken(req, res) {
+    try {
+      const { id } = req.params;
+      await Feedback.revokeCampaignShareToken(id);
+      return res.json({
+        success: true,
+        message: 'Share link revoked successfully.'
+      });
+    } catch (err) {
+      console.error('[FeedbackController] revokeShareToken error:', err);
+      return res.status(500).json({ message: 'Failed to revoke share token' });
+    }
+  },
+
+  /**
+   * GET /api/feedback/:id/export/pdf
+   * Download feedback report as professional PDF
+   */
+  async exportPDF(req, res) {
+    try {
+      const { id } = req.params;
+      const report = await Feedback.getReportData(id);
+      if (!report) {
+        return res.status(404).send('Feedback campaign not found');
+      }
+
+      const buffer = await documentService.generateFeedbackPDF(report);
+      const safeTitle = (report.campaign.title || 'Feedback').replace(/[^a-zA-Z0-9_-]/g, '_');
+      
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="${safeTitle}_Report.pdf"`);
+      return res.send(buffer);
+    } catch (err) {
+      console.error('[FeedbackController] exportPDF error:', err);
+      return res.status(500).send('Failed to generate PDF report');
+    }
+  },
+
+  /**
+   * GET /api/feedback/:id/export/docx
+   * Download feedback report as professional Word Document (.docx)
+   */
+  async exportDOCX(req, res) {
+    try {
+      const { id } = req.params;
+      const report = await Feedback.getReportData(id);
+      if (!report) {
+        return res.status(404).send('Feedback campaign not found');
+      }
+
+      const buffer = await documentService.generateFeedbackDOCX(report);
+      const safeTitle = (report.campaign.title || 'Feedback').replace(/[^a-zA-Z0-9_-]/g, '_');
+      
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+      res.setHeader('Content-Disposition', `attachment; filename="${safeTitle}_Report.docx"`);
+      return res.send(buffer);
+    } catch (err) {
+      console.error('[FeedbackController] exportDOCX error:', err);
+      return res.status(500).send('Failed to generate Word report');
     }
   }
 };

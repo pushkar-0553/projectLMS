@@ -275,9 +275,314 @@ async function generateQuestionPaperDOCX(paperData, orgName = 'EXAMINATION & EVA
   return await Packer.toBuffer(doc);
 }
 
+/**
+ * Generate PDF buffer for Student Feedback Campaign Report
+ */
+function generateFeedbackPDF(reportData, orgName = 'VCUBE LMS - STUDENT FEEDBACK REPORT') {
+  return new Promise((resolve, reject) => {
+    try {
+      const doc = new PDFDocument({ margin: 40, size: 'A4', bufferPages: true });
+      const buffers = [];
+
+      doc.on('data', buffers.push.bind(buffers));
+      doc.on('end', () => resolve(Buffer.concat(buffers)));
+
+      const campaign = reportData.campaign || {};
+      const stats = reportData.stats || {};
+      const questions = reportData.questions || [];
+      const responses = reportData.responses || [];
+
+      // 1. Report Title & Organization
+      doc.fontSize(16).font('Helvetica-Bold').fillColor('#1e3a8a').text(orgName, { align: 'center' });
+      doc.moveDown(0.3);
+      doc.fontSize(14).font('Helvetica-Bold').fillColor('#0f172a').text(campaign.title || 'Course Feedback Report', { align: 'center' });
+      doc.moveDown(0.4);
+
+      // Meta Info Bar
+      doc.fontSize(9.5).font('Helvetica').fillColor('#475569');
+      const batchList = (reportData.batches || []).map(b => b.name).join(', ') || 'All Batches';
+      doc.text(`Course: ${campaign.course_name || 'N/A'}    |    Date: ${campaign.feedback_date || 'N/A'}    |    Batches: ${batchList}`, { align: 'center' });
+      doc.moveDown(0.6);
+
+      // Divider line
+      doc.moveTo(40, doc.y).lineTo(555, doc.y).strokeColor('#cbd5e1').stroke();
+      doc.moveDown(0.6);
+
+      // 2. Summary KPI Box
+      const kpiTop = doc.y;
+      doc.rect(40, kpiTop, 515, 46).fillAndStroke('#f8fafc', '#e2e8f0');
+      
+      const totalStud = stats.total_students || 0;
+      const completed = stats.completed_count || responses.length || 0;
+      const pending = stats.pending_count !== undefined ? stats.pending_count : Math.max(0, totalStud - completed);
+      const rate = stats.completion_rate !== undefined ? stats.completion_rate : (totalStud > 0 ? Math.round((completed / totalStud) * 100) : 0);
+
+      doc.fillColor('#0f172a').font('Helvetica-Bold').fontSize(9);
+      doc.text(`Total Students: ${totalStud}`, 55, kpiTop + 10);
+      doc.fillColor('#047857').text(`Completed: ${completed}`, 180, kpiTop + 10);
+      doc.fillColor('#b45309').text(`Pending: ${pending}`, 305, kpiTop + 10);
+      doc.fillColor('#4338ca').text(`Completion Rate: ${rate}%`, 425, kpiTop + 10);
+
+      doc.fillColor('#64748b').font('Helvetica').fontSize(8.5);
+      doc.text(`Total Questions: ${questions.length}`, 55, kpiTop + 26);
+      doc.text(`Exported: ${new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}`, 425, kpiTop + 26);
+
+      doc.y = kpiTop + 56;
+      doc.moveDown(0.4);
+
+      // 3. Responses Header
+      doc.fontSize(12).font('Helvetica-Bold').fillColor('#1e293b').text(`Submitted Student Feedback (${responses.length})`);
+      doc.moveDown(0.4);
+
+      if (responses.length === 0) {
+        doc.fontSize(10).font('Helvetica-Oblique').fillColor('#64748b').text('No feedback responses have been submitted yet.', { align: 'center' });
+      } else {
+        responses.forEach((resp, idx) => {
+          // If less than 140pt remaining on page, start on a fresh page
+          if (doc.y > 670) {
+            doc.addPage();
+          }
+
+          const cardStart = doc.y;
+          // Card Header Bar
+          doc.rect(40, cardStart, 515, 22).fill('#f1f5f9');
+          doc.fillColor('#0f172a').font('Helvetica-Bold').fontSize(9.5);
+          doc.text(`${idx + 1}. ${resp.student_name || 'Student'}`, 48, cardStart + 6, { continued: true });
+          doc.font('Helvetica').fontSize(8.5).fillColor('#475569');
+          doc.text(`   [Batch: ${resp.batch_name || 'Unassigned'}]`, { continued: true });
+          
+          const submittedAtStr = resp.submitted_at 
+            ? new Date(resp.submitted_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+            : 'Submitted';
+          doc.text(submittedAtStr, { align: 'right' });
+
+          doc.y = cardStart + 26;
+          doc.moveDown(0.2);
+
+          // Contact line if available
+          if (resp.student_mobile || resp.student_email) {
+            doc.font('Helvetica').fontSize(8).fillColor('#64748b');
+            const contactText = [resp.student_mobile ? `Mobile: ${resp.student_mobile.trim()}` : null, resp.student_email ? `Email: ${resp.student_email.trim()}` : null].filter(Boolean).join('  |  ');
+            doc.text(contactText, 48);
+            doc.moveDown(0.3);
+          }
+
+          // Questions & Answers
+          const answersMap = {};
+          (resp.answers || []).forEach(a => {
+            answersMap[a.question_id] = a;
+          });
+
+          questions.forEach((q, qIdx) => {
+            if (doc.y > 720) {
+              doc.addPage();
+            }
+
+            const ans = answersMap[q.id];
+            doc.font('Helvetica-Bold').fontSize(8.5).fillColor('#1e293b');
+            doc.text(`Q${qIdx + 1}. ${q.question_text}`, 48);
+
+            let displayAnswer = 'No answer provided';
+            if (ans) {
+              if (q.question_type === 'RATING') {
+                const val = ans.rating_value || ans.ratingValue;
+                const stars = val ? '★'.repeat(val) + '☆'.repeat(Math.max(0, 5 - val)) : '';
+                displayAnswer = val ? `${stars} (${val}/5 Stars)` : 'Not rated';
+              } else {
+                displayAnswer = ans.answer_text || ans.answerText || 'None';
+              }
+            }
+
+            doc.font('Helvetica').fontSize(8.5).fillColor('#0369a1');
+            doc.text(`Answer: ${displayAnswer}`, 60);
+            doc.moveDown(0.2);
+          });
+
+          // Overall Feedback
+          if (resp.overall_feedback && String(resp.overall_feedback).trim()) {
+            if (doc.y > 720) {
+              doc.addPage();
+            }
+            doc.font('Helvetica-Bold').fontSize(8.5).fillColor('#92400e');
+            doc.text(`Overall Notes:`, 48, doc.y, { continued: true });
+            doc.font('Helvetica-Oblique').fontSize(8.5).fillColor('#78350f');
+            doc.text(` "${resp.overall_feedback.trim()}"`);
+            doc.moveDown(0.2);
+          }
+
+          doc.moveDown(0.4);
+          doc.moveTo(40, doc.y).lineTo(555, doc.y).strokeColor('#e2e8f0').stroke();
+          doc.moveDown(0.5);
+        });
+      }
+
+      // Footer
+      doc.moveDown(0.5);
+      doc.fontSize(8).font('Helvetica-Oblique').fillColor('#94a3b8').text('--- End of Student Feedback Report ---', { align: 'center' });
+      doc.end();
+    } catch (err) {
+      reject(err);
+    }
+  });
+}
+
+/**
+ * Generate DOCX buffer for Student Feedback Campaign Report
+ */
+async function generateFeedbackDOCX(reportData, orgName = 'VCUBE LMS - STUDENT FEEDBACK REPORT') {
+  const campaign = reportData.campaign || {};
+  const stats = reportData.stats || {};
+  const questions = reportData.questions || [];
+  const responses = reportData.responses || [];
+  const batchList = (reportData.batches || []).map(b => b.name).join(', ') || 'All Batches';
+
+  const totalStud = stats.total_students || 0;
+  const completed = stats.completed_count || responses.length || 0;
+  const pending = stats.pending_count !== undefined ? stats.pending_count : Math.max(0, totalStud - completed);
+  const rate = stats.completion_rate !== undefined ? stats.completion_rate : (totalStud > 0 ? Math.round((completed / totalStud) * 100) : 0);
+
+  const children = [
+    new Paragraph({
+      text: orgName,
+      heading: HeadingLevel.TITLE,
+      alignment: AlignmentType.CENTER
+    }),
+    new Paragraph({
+      text: campaign.title || 'Student Feedback Report',
+      heading: HeadingLevel.HEADING_2,
+      alignment: AlignmentType.CENTER
+    }),
+    new Paragraph({
+      children: [
+        new TextRun({ text: `Course: ${campaign.course_name || 'N/A'}    |    `, bold: true }),
+        new TextRun({ text: `Date: ${campaign.feedback_date || 'N/A'}    |    `, bold: true }),
+        new TextRun({ text: `Batches: ${batchList}`, bold: true })
+      ],
+      alignment: AlignmentType.CENTER
+    }),
+    new Paragraph({ text: '' }),
+
+    // Summary Section
+    new Paragraph({
+      text: 'EXECUTIVE SUMMARY',
+      heading: HeadingLevel.HEADING_1
+    }),
+    new Paragraph({
+      children: [
+        new TextRun({ text: `Total Students Assigned: `, bold: true }),
+        new TextRun({ text: `${totalStud}    |    ` }),
+        new TextRun({ text: `Completed Feedback: `, bold: true }),
+        new TextRun({ text: `${completed}    |    ` }),
+        new TextRun({ text: `Pending: `, bold: true }),
+        new TextRun({ text: `${pending}    |    ` }),
+        new TextRun({ text: `Completion Rate: `, bold: true }),
+        new TextRun({ text: `${rate}%` })
+      ]
+    }),
+    new Paragraph({ text: '' }),
+    new Paragraph({
+      text: `STUDENT FEEDBACK RESPONSES (${responses.length})`,
+      heading: HeadingLevel.HEADING_1
+    }),
+    new Paragraph({ text: '' })
+  ];
+
+  if (responses.length === 0) {
+    children.push(new Paragraph({
+      children: [new TextRun({ text: 'No feedback responses have been submitted yet.', italics: true })]
+    }));
+  } else {
+    responses.forEach((resp, idx) => {
+      const answersMap = {};
+      (resp.answers || []).forEach(a => {
+        answersMap[a.question_id] = a;
+      });
+
+      const submittedAtStr = resp.submitted_at 
+        ? new Date(resp.submitted_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+        : 'Submitted';
+
+      // Student Header
+      children.push(new Paragraph({
+        text: `${idx + 1}. ${resp.student_name || 'Student'} - Batch: ${resp.batch_name || 'Unassigned'}`,
+        heading: HeadingLevel.HEADING_2
+      }));
+
+      // Contact & Timing
+      const metaRuns = [
+        new TextRun({ text: `Submission Time: ${submittedAtStr}`, italics: true })
+      ];
+      if (resp.student_mobile) {
+        metaRuns.push(new TextRun({ text: `   |   Mobile: ${resp.student_mobile.trim()}`, italics: true }));
+      }
+      if (resp.student_email) {
+        metaRuns.push(new TextRun({ text: `   |   Email: ${resp.student_email.trim()}`, italics: true }));
+      }
+      children.push(new Paragraph({ children: metaRuns }));
+      children.push(new Paragraph({ text: '' }));
+
+      // Questions & Answers
+      questions.forEach((q, qIdx) => {
+        const ans = answersMap[q.id];
+        let displayAnswer = 'No answer provided';
+        if (ans) {
+          if (q.question_type === 'RATING') {
+            const val = ans.rating_value || ans.ratingValue;
+            displayAnswer = val ? `${val} / 5 Stars` : 'Not rated';
+          } else {
+            displayAnswer = ans.answer_text || ans.answerText || 'None';
+          }
+        }
+
+        children.push(new Paragraph({
+          children: [
+            new TextRun({ text: `Q${qIdx + 1}. ${q.question_text}`, bold: true })
+          ]
+        }));
+        children.push(new Paragraph({
+          children: [
+            new TextRun({ text: `Answer: `, bold: true }),
+            new TextRun({ text: displayAnswer })
+          ]
+        }));
+        children.push(new Paragraph({ text: '' }));
+      });
+
+      // Overall Feedback
+      if (resp.overall_feedback && String(resp.overall_feedback).trim()) {
+        children.push(new Paragraph({
+          children: [
+            new TextRun({ text: `Overall Notes: `, bold: true }),
+            new TextRun({ text: String(resp.overall_feedback).trim(), italics: true })
+          ]
+        }));
+        children.push(new Paragraph({ text: '' }));
+      }
+
+      // Separator
+      children.push(new Paragraph({
+        text: '----------------------------------------------------------------------------------------------------'
+      }));
+      children.push(new Paragraph({ text: '' }));
+    });
+  }
+
+  const doc = new Document({
+    sections: [{
+      properties: {},
+      children
+    }]
+  });
+
+  return await Packer.toBuffer(doc);
+}
+
 module.exports = {
   renderQuestionPaperHTML,
   renderAnswerKeyHTML,
   generateQuestionPaperPDF,
-  generateQuestionPaperDOCX
+  generateQuestionPaperDOCX,
+  generateFeedbackPDF,
+  generateFeedbackDOCX
 };
+

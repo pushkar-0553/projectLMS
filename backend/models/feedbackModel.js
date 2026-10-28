@@ -232,6 +232,7 @@ class Feedback {
         fc.course_id,
         DATE_FORMAT(fc.feedback_date, '%Y-%m-%d') as feedback_date,
         fc.status,
+        fc.share_token,
         fc.created_by,
         fc.created_at,
         fc.updated_at,
@@ -940,6 +941,142 @@ class Feedback {
       [feedbackId]
     );
     return rows;
+  }
+
+  /**
+   * Common Report Data Service
+   * Retrieves complete feedback campaign report with all submitted responses & answers
+   */
+  static async getReportData(id) {
+    const campaign = await Feedback.getById(id);
+    if (!campaign) return null;
+
+    // Fetch all submitted responses
+    const [responseRows] = await pool.execute(
+      `SELECT 
+        r.id as response_id,
+        r.feedback_id,
+        r.student_id,
+        r.batch_id,
+        r.status,
+        r.overall_feedback,
+        r.submitted_at,
+        u.name as student_name,
+        u.email as student_email,
+        u.mobile as student_mobile,
+        COALESCE(b.name, 'Unassigned') as batch_name
+       FROM feedback_responses r
+       JOIN Users u ON r.student_id = u.id
+       LEFT JOIN Batches b ON r.batch_id = b.id
+       WHERE r.feedback_id = ? AND r.status = 'COMPLETED'
+       ORDER BY 
+         CASE WHEN b.name IS NOT NULL THEN 0 ELSE 1 END,
+         b.name ASC,
+         u.name ASC`,
+      [id]
+    );
+
+    // If there are responses, fetch all answers for these responses
+    let answersByResponse = {};
+    if (responseRows.length > 0) {
+      const respIds = responseRows.map(r => r.response_id);
+      const placeholders = respIds.map(() => '?').join(',');
+      const [answerRows] = await pool.execute(
+        `SELECT 
+          a.id as answer_id,
+          a.response_id,
+          a.question_id,
+          a.answer_text,
+          a.rating_value,
+          q.question_text,
+          q.question_type,
+          q.options,
+          q.question_order,
+          q.is_required
+         FROM feedback_answers a
+         JOIN feedback_questions q ON a.question_id = q.id
+         WHERE a.response_id IN (${placeholders})
+         ORDER BY q.question_order ASC, q.id ASC`,
+        respIds
+      );
+
+      answerRows.forEach(a => {
+        if (!answersByResponse[a.response_id]) answersByResponse[a.response_id] = [];
+        answersByResponse[a.response_id].push(a);
+      });
+    }
+
+    const responsesWithAnswers = responseRows.map(r => ({
+      ...r,
+      answers: answersByResponse[r.response_id] || []
+    }));
+
+    return {
+      campaign: {
+        id: campaign.id,
+        title: campaign.title,
+        description: campaign.description,
+        course_id: campaign.course_id,
+        course_name: campaign.course_name,
+        course_code: campaign.course_code,
+        course_slug: campaign.course_slug,
+        feedback_date: campaign.feedback_date,
+        status: campaign.status,
+        share_token: campaign.share_token,
+        creator_name: campaign.creator_name,
+        created_at: campaign.created_at
+      },
+      batches: campaign.batches || [],
+      questions: campaign.questions || [],
+      stats: {
+        total_students: campaign.total_students || 0,
+        completed_count: responseRows.length,
+        completed_responses: responseRows.length,
+        pending_count: Math.max(0, (campaign.total_students || 0) - responseRows.length),
+        pending_responses: Math.max(0, (campaign.total_students || 0) - responseRows.length),
+        completion_rate: (campaign.total_students > 0) 
+          ? Math.round((responseRows.length / campaign.total_students) * 100) 
+          : 0,
+        batch_stats: campaign.batch_stats || []
+      },
+      responses: responsesWithAnswers
+    };
+  }
+
+  /**
+   * Retrieve catalog report data by public campaign share token
+   */
+  static async getReportByShareToken(token) {
+    if (!token) return null;
+    const [rows] = await pool.execute(
+      'SELECT id FROM feedback_campaigns WHERE share_token = ? LIMIT 1',
+      [token]
+    );
+    if (rows.length === 0) return null;
+    return await Feedback.getReportData(rows[0].id);
+  }
+
+  /**
+   * Generate or renew public share token for feedback campaign
+   */
+  static async generateCampaignShareToken(feedbackId) {
+    const token = `fbc_${crypto.randomBytes(16).toString('hex')}`;
+    await pool.execute(
+      'UPDATE feedback_campaigns SET share_token = ? WHERE id = ?',
+      [token, feedbackId]
+    );
+    return token;
+  }
+
+  /**
+   * Revoke campaign public share token
+   */
+  static async revokeCampaignShareToken(feedbackId) {
+    await pool.execute(
+      'UPDATE feedback_campaigns SET share_token = NULL WHERE id = ?',
+      [feedbackId]
+    );
+    return true;
   }
 }
 

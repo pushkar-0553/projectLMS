@@ -351,6 +351,29 @@ const styles = {
     alignItems: 'center',
     gap: '6px',
     transition: 'background 0.2s'
+  },
+  modalOverlay: {
+    position: 'fixed',
+    inset: 0,
+    background: 'rgba(15, 23, 42, 0.65)',
+    backdropFilter: 'blur(4px)',
+    WebkitBackdropFilter: 'blur(4px)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 9999,
+    padding: '16px'
+  },
+  modalContainer: {
+    background: '#ffffff',
+    borderRadius: '16px',
+    width: '100%',
+    maxHeight: '90vh',
+    display: 'flex',
+    flexDirection: 'column',
+    boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+    overflow: 'hidden',
+    position: 'relative'
   }
 };
 

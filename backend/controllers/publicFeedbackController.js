@@ -1,5 +1,6 @@
 const Feedback = require('../models/feedbackModel');
 const feedbackQueueService = require('../services/feedbackQueueService');
+const documentService = require('../services/documentService');
 let socketModule = null;
 try {
   socketModule = require('../socket');
@@ -142,6 +143,80 @@ const publicFeedbackController = {
     } catch (err) {
       console.error('[PublicFeedbackController] requestEditAccess error:', err);
       return res.status(500).json({ message: 'Failed to request edit access' });
+    }
+  },
+
+  /**
+   * GET /api/public/feedback/catalog/:token
+   * Public read-only catalog endpoint for higher officials to review feedback
+   */
+  async getCatalogByToken(req, res) {
+    try {
+      const { token } = req.params;
+      if (!token) {
+        return res.status(400).json({ message: 'Token is required' });
+      }
+
+      const report = await Feedback.getReportByShareToken(token);
+      if (!report) {
+        return res.status(404).json({ message: 'Feedback report link is invalid or expired' });
+      }
+
+      return res.json({
+        success: true,
+        data: report
+      });
+    } catch (err) {
+      console.error('[PublicFeedbackController] getCatalogByToken error:', err);
+      return res.status(500).json({ message: 'Failed to load feedback catalog' });
+    }
+  },
+
+  /**
+   * GET /api/public/feedback/catalog/:token/export/pdf
+   * Public download of feedback PDF for higher officials
+   */
+  async exportPublicCatalogPDF(req, res) {
+    try {
+      const { token } = req.params;
+      const report = await Feedback.getReportByShareToken(token);
+      if (!report) {
+        return res.status(404).send('Feedback report link is invalid or expired');
+      }
+
+      const buffer = await documentService.generateFeedbackPDF(report);
+      const safeTitle = (report.campaign.title || 'Feedback').replace(/[^a-zA-Z0-9_-]/g, '_');
+      
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="${safeTitle}_Report.pdf"`);
+      return res.send(buffer);
+    } catch (err) {
+      console.error('[PublicFeedbackController] exportPublicCatalogPDF error:', err);
+      return res.status(500).send('Failed to generate PDF report');
+    }
+  },
+
+  /**
+   * GET /api/public/feedback/catalog/:token/export/docx
+   * Public download of feedback Word Document (.docx) for higher officials
+   */
+  async exportPublicCatalogDOCX(req, res) {
+    try {
+      const { token } = req.params;
+      const report = await Feedback.getReportByShareToken(token);
+      if (!report) {
+        return res.status(404).send('Feedback report link is invalid or expired');
+      }
+
+      const buffer = await documentService.generateFeedbackDOCX(report);
+      const safeTitle = (report.campaign.title || 'Feedback').replace(/[^a-zA-Z0-9_-]/g, '_');
+      
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+      res.setHeader('Content-Disposition', `attachment; filename="${safeTitle}_Report.docx"`);
+      return res.send(buffer);
+    } catch (err) {
+      console.error('[PublicFeedbackController] exportPublicCatalogDOCX error:', err);
+      return res.status(500).send('Failed to generate Word report');
     }
   }
 };

@@ -72,6 +72,7 @@ const MockInterviewDetail = lazy(() => import('./pages/mockInterviews/MockInterv
 const FeedbackList = lazy(() => import('./pages/feedback/FeedbackList'))
 const FeedbackDetail = lazy(() => import('./pages/feedback/FeedbackDetail'))
 const PublicFeedbackPage = lazy(() => import('./pages/feedback/PublicFeedbackPage'))
+const PublicFeedbackCatalogPage = lazy(() => import('./pages/feedback/PublicFeedbackCatalogPage'))
 
 const PageLoader = () => (
   <div className="loading" style={{ minHeight: '60vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -182,6 +183,10 @@ function App() {
         {/* Public Student Feedback Share Portal */}
         <Route path="/feedback/share/:token" element={<PublicFeedbackPage />} />
         <Route path="/:courseSlug/feedback/share/:token" element={<PublicFeedbackPage />} />
+
+        {/* Public Feedback Share Catalog for Management / Higher Officials */}
+        <Route path="/feedback/catalog/:token" element={<PublicFeedbackCatalogPage />} />
+        <Route path="/:courseSlug/feedback/catalog/:token" element={<PublicFeedbackCatalogPage />} />
 
         {/* Protected Mock Interviews Routes (Admin, Coordinator & Super Admin Only) with Sidebar Layout */}
         <Route 

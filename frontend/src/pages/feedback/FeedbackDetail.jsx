@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Search, Calendar, BookOpen, Layers, Edit3, CheckCircle, Clock, Users, Phone } from 'lucide-react';
+import { ArrowLeft, Search, Calendar, BookOpen, Layers, Edit3, CheckCircle, Clock, Users, Phone, Share2, FileText } from 'lucide-react';
 import { feedbackAPI } from '../../services/api';
 import { useCourse } from '../../context/CourseContext';
 import styles from './Feedback.styles';
@@ -10,6 +10,8 @@ import FeedbackStudentCard from '../../components/feedback/FeedbackStudentCard';
 import CreateFeedbackModal from '../../components/feedback/CreateFeedbackModal';
 import StudentFeedbackModal from '../../components/feedback/StudentFeedbackModal';
 import ViewFeedbackModal from '../../components/feedback/ViewFeedbackModal';
+import FeedbackFlipbookModal from '../../components/feedback/FeedbackFlipbookModal';
+import FeedbackShareModal from '../../components/feedback/FeedbackShareModal';
 
 const FeedbackDetail = () => {
   const { id } = useParams();
@@ -28,6 +30,9 @@ const FeedbackDetail = () => {
 
   // Modals
   const [showEditModal, setShowEditModal] = useState(false);
+  const [showFlipbookModal, setShowFlipbookModal] = useState(false);
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [reportData, setReportData] = useState(null);
   const [feedbackStudent, setFeedbackStudent] = useState(null);
   const [viewingStudent, setViewingStudent] = useState(null);
 
@@ -53,12 +58,14 @@ const FeedbackDetail = () => {
     try {
       setLoading(true);
       setError('');
-      const [campRes, studRes] = await Promise.all([
+      const [campRes, studRes, reportRes] = await Promise.all([
         feedbackAPI.getById(id),
-        feedbackAPI.getStudents(id)
+        feedbackAPI.getStudents(id),
+        feedbackAPI.getReportData(id)
       ]);
       setCampaign(campRes.data);
       setStudents(studRes.data || []);
+      setReportData(reportRes.data || null);
     } catch (err) {
       console.error('Failed to load feedback details:', err);
       setError('Failed to load feedback details. Please reload.');
@@ -116,6 +123,21 @@ const FeedbackDetail = () => {
   const editRequestsCount = useMemo(() => {
     return students.filter(s => s.share_status === 'EDIT_REQUESTED').length;
   }, [students]);
+
+  const handleOpenShareModal = async () => {
+    setShowShareModal(true);
+    try {
+      if (campaign && !campaign.share_token) {
+        const res = await feedbackAPI.generateShareToken(campaign.id);
+        if (res.data?.share_token) {
+          setCampaign(prev => ({ ...prev, share_token: res.data.share_token }));
+        }
+      }
+      feedbackAPI.getReportData(id).then(rRes => setReportData(rRes.data || null)).catch(() => {});
+    } catch (e) {
+      console.error('Error pre-generating share token on click:', e);
+    }
+  };
 
   // Filtered Students
   const filteredStudents = useMemo(() => {
@@ -233,12 +255,52 @@ const FeedbackDetail = () => {
               </div>
             </div>
 
-            <div className="fb-header-actions">
+            <div className="fb-header-actions" style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+              <button
+                type="button"
+                className="fb-action-btn-give"
+                onClick={() => setShowFlipbookModal(true)}
+                style={{
+                  padding: '8px 16px',
+                  fontSize: '13px',
+                  background: '#4f46e5',
+                  color: '#ffffff',
+                  boxShadow: '0 2px 4px rgba(79,70,229,0.3)',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  cursor: 'pointer'
+                }}
+                title="Review all student feedback in paper flipbook mode"
+              >
+                <BookOpen size={14} /> View All Feedback ({detailStats.completed})
+              </button>
+
+              <button
+                type="button"
+                className="fb-action-btn-view"
+                onClick={handleOpenShareModal}
+                style={{
+                  padding: '8px 16px',
+                  fontSize: '13px',
+                  border: '1px solid #cbd5e1',
+                  background: '#ffffff',
+                  color: '#1e293b',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  cursor: 'pointer'
+                }}
+                title="Share feedback catalog with management or export files"
+              >
+                <Share2 size={14} color="#4338ca" /> Share Feedback
+              </button>
+
               <button
                 type="button"
                 className="fb-action-btn-view"
                 onClick={() => setShowEditModal(true)}
-                style={{ padding: '8px 16px', fontSize: '13px' }}
+                style={{ padding: '8px 16px', fontSize: '13px', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
               >
                 <Edit3 size={14} /> Edit Campaign
               </button>
@@ -546,6 +608,27 @@ const FeedbackDetail = () => {
           editCampaign={campaign}
         />
       )}
+
+      {/* Flipbook / All Feedback Viewer Modal */}
+      <FeedbackFlipbookModal
+        isOpen={showFlipbookModal}
+        onClose={() => setShowFlipbookModal(false)}
+        reportData={reportData}
+        initialBatchFilter={selectedBatchFilter}
+      />
+
+      {/* Share Feedback Catalog Modal */}
+      <FeedbackShareModal
+        isOpen={showShareModal}
+        onClose={() => setShowShareModal(false)}
+        campaign={campaign}
+        reportData={reportData}
+        onTokenUpdated={(updated) => {
+          const newToken = updated?.share_token !== undefined ? updated.share_token : updated;
+          setCampaign(prev => ({ ...prev, share_token: newToken }));
+          loadData();
+        }}
+      />
     </div>
   );
 };

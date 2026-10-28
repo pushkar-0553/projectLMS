@@ -68,6 +68,7 @@ api.interceptors.response.use(
         currentPath.startsWith('/login') ||
         currentPath.startsWith('/public') ||
         currentPath.includes('/feedback/share') ||
+        currentPath.includes('/feedback/catalog') ||
         currentPath.includes('/resumes/share') ||
         currentPath.includes('/exam/');
 
@@ -383,11 +384,33 @@ export const feedbackAPI = {
   allowEditAccess: (id, studentId) => api.post(`/feedback/${id}/links/${studentId}/allow-edit`),
   rejectEditAccess: (id, studentId) => api.post(`/feedback/${id}/links/${studentId}/reject-edit`),
 
-  // URL helper
+  // Common Report Data & Share Catalog
+  getReportData: (id) => api.get(`/feedback/${id}/report`),
+  generateShareToken: (id) => api.post(`/feedback/${id}/share-token`),
+  revokeShareToken: (id) => api.delete(`/feedback/${id}/share-token`),
+  getPublicCatalog: (token) => api.get(`/public/feedback/catalog/${token}`),
+
+  // URL helpers
   getPublicShareUrl: (token) => {
     const origin = typeof window !== 'undefined' ? window.location.origin : '';
     return `${origin}/feedback/share/${token}`;
-  }
+  },
+  getCatalogShareUrl: (token) => {
+    const origin = typeof window !== 'undefined' ? window.location.origin : '';
+    return `${origin}/feedback/catalog/${token}`;
+  },
+
+  // Direct download helpers for PDF and Word reports
+  getPdfExportUrl: (id) => {
+    const token = sessionStorage.getItem('token') || localStorage.getItem('token');
+    return `${API_BASE_URL}/feedback/${id}/export/pdf${token ? `?token=${token}` : ''}`;
+  },
+  getDocxExportUrl: (id) => {
+    const token = sessionStorage.getItem('token') || localStorage.getItem('token');
+    return `${API_BASE_URL}/feedback/${id}/export/docx${token ? `?token=${token}` : ''}`;
+  },
+  getPublicCatalogPdfUrl: (token) => `${API_BASE_URL}/public/feedback/catalog/${token}/export/pdf`,
+  getPublicCatalogDocxUrl: (token) => `${API_BASE_URL}/public/feedback/catalog/${token}/export/docx`
 };
 
 export default api;

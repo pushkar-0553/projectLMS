@@ -24,4 +24,11 @@ router.get('/feedback/:id/edit-requests', feedbackController.getEditRequests);
 router.post('/feedback/:id/links/:studentId/allow-edit', feedbackController.allowEditAccess);
 router.post('/feedback/:id/links/:studentId/reject-edit', feedbackController.rejectEditAccess);
 
+// Campaign Report, Share Catalog & Document Exports
+router.get('/feedback/:id/report', feedbackController.getReportData);
+router.post('/feedback/:id/share-token', feedbackController.generateShareToken);
+router.delete('/feedback/:id/share-token', feedbackController.revokeShareToken);
+router.get('/feedback/:id/export/pdf', feedbackController.exportPDF);
+router.get('/feedback/:id/export/docx', feedbackController.exportDOCX);
+
 module.exports = router;

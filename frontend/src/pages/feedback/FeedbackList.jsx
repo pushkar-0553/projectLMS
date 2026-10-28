@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Search, Calendar, Users, CheckCircle, Clock, Trash2, Edit3, ArrowRight, BookOpen, Layers } from 'lucide-react';
+import { Plus, Search, Calendar, Users, CheckCircle, Clock, Trash2, Edit3, ArrowRight, BookOpen, Layers, Share2 } from 'lucide-react';
 import { feedbackAPI } from '../../services/api';
 import { useCourse } from '../../context/CourseContext';
 import styles from './Feedback.styles';
 import './Feedback.css';
 import CreateFeedbackModal from '../../components/feedback/CreateFeedbackModal';
+import FeedbackShareModal from '../../components/feedback/FeedbackShareModal';
 
 const FeedbackList = () => {
   const navigate = useNavigate();
@@ -20,6 +21,25 @@ const FeedbackList = () => {
   // Modals
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editingCampaign, setEditingCampaign] = useState(null);
+  const [sharingCampaign, setSharingCampaign] = useState(null);
+  const [shareReportData, setShareReportData] = useState(null);
+
+  const handleOpenShare = async (e, c) => {
+    e.stopPropagation();
+    setSharingCampaign(c);
+    try {
+      if (!c.share_token) {
+        const res = await feedbackAPI.generateShareToken(c.id);
+        if (res.data?.share_token) {
+          setSharingCampaign(prev => prev ? ({ ...prev, share_token: res.data.share_token }) : prev);
+          loadCampaigns();
+        }
+      }
+      feedbackAPI.getReportData(c.id).then(rRes => setShareReportData(rRes.data || null)).catch(() => {});
+    } catch (err) {
+      console.error('Failed to pre-generate share token:', err);
+    }
+  };
 
   const activeCourseId = currentCourse?.id || null;
 
@@ -347,6 +367,26 @@ const FeedbackList = () => {
 
                       <button
                         type="button"
+                        onClick={(e) => handleOpenShare(e, c)}
+                        style={{
+                          background: '#ffffff',
+                          border: '1px solid #cbd5e1',
+                          borderRadius: '6px',
+                          padding: '6px 10px',
+                          fontSize: '12px',
+                          color: '#4338ca',
+                          cursor: 'pointer',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px'
+                        }}
+                        title="Share feedback catalog with management or export files"
+                      >
+                        <Share2 size={13} color="#4338ca" /> Share
+                      </button>
+
+                      <button
+                        type="button"
                         onClick={(e) => handleDeleteCampaign(e, c.id, c.title)}
                         style={{
                           background: '#fef2f2',
@@ -398,6 +438,24 @@ const FeedbackList = () => {
           }}
           currentCourseId={activeCourseId}
           editCampaign={editingCampaign}
+        />
+      )}
+
+      {/* Share Feedback Catalog Modal */}
+      {sharingCampaign && (
+        <FeedbackShareModal
+          isOpen={Boolean(sharingCampaign)}
+          onClose={() => {
+            setSharingCampaign(null);
+            setShareReportData(null);
+          }}
+          campaign={sharingCampaign}
+          reportData={shareReportData}
+          onTokenUpdated={(updated) => {
+            const newToken = updated?.share_token !== undefined ? updated.share_token : updated;
+            setSharingCampaign(prev => prev ? ({ ...prev, share_token: newToken }) : null);
+            loadCampaigns();
+          }}
         />
       )}
     </div>
