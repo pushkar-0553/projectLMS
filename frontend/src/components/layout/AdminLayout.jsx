@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import { useCourse } from '../../context/CourseContext'
-import { BarChart3, BookOpen, GraduationCap, History, Layers, LogOut, UserCog, Users, UserCheck, MessageSquare, FileText, Shield, CheckSquare, Video, Menu, X } from 'lucide-react'
+import { BarChart3, BookOpen, CalendarCheck, GraduationCap, History, Layers, LogOut, UserCog, Users, UserCheck, MessageSquare, FileText, Shield, CheckSquare, Video, Menu, X } from 'lucide-react'
 import NotificationBell from '../notifications/NotificationBell';
 import MessagingIcon from '../messaging/MessagingIcon';
 import CourseSwitcher from '../common/CourseSwitcher';
@@ -26,6 +26,7 @@ const AdminLayout = ({ children }) => {
     { path: `${baseAdmin}/coordinators`, icon: GraduationCap, label: 'Coordinators' },
     { path: `${baseAdmin}/faculties`, icon: UserCheck, label: 'Faculty' },
     { path: `${baseAdmin}/batches`, icon: Layers, label: 'Batches' },
+    { path: `${baseAdmin}/attendance`, icon: CalendarCheck, label: 'Attendance Management' },
     { path: `${baseAdmin}/exams`, icon: CheckSquare, label: 'Written Exams' },
     { path: courseSlug ? `/${courseSlug}/resumes` : '/resumes', icon: FileText, label: 'Resume Hub' },
     { path: courseSlug ? `/${courseSlug}/mock-interviews` : '/mock-interviews', icon: Video, label: 'Mock Interviews' },

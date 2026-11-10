@@ -73,6 +73,8 @@ const FeedbackList = lazy(() => import('./pages/feedback/FeedbackList'))
 const FeedbackDetail = lazy(() => import('./pages/feedback/FeedbackDetail'))
 const PublicFeedbackPage = lazy(() => import('./pages/feedback/PublicFeedbackPage'))
 const PublicFeedbackCatalogPage = lazy(() => import('./pages/feedback/PublicFeedbackCatalogPage'))
+const PublicAttendancePortal = lazy(() => import('./pages/attendance/PublicAttendancePortal'))
+const AttendanceManagement = lazy(() => import('./pages/attendance/AttendanceManagement'))
 
 const PageLoader = () => (
   <div className="loading" style={{ minHeight: '60vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -117,6 +119,8 @@ function App() {
       isResumePage = true;
     } else if (path.includes('/mock-interviews')) {
       title = 'Mock Interviews | VCUBE';
+    } else if (path === '/attendance') {
+      title = 'Student Attendance | VCUBE LMS';
     } else if (path === '/login') {
       title = 'Login | VCUBE LMS';
     } else if (path.includes('/dashboard')) {
@@ -183,6 +187,9 @@ function App() {
         {/* Public Student Feedback Share Portal */}
         <Route path="/feedback/share/:token" element={<PublicFeedbackPage />} />
         <Route path="/:courseSlug/feedback/share/:token" element={<PublicFeedbackPage />} />
+
+        {/* Public Student Attendance Portal (No login required) */}
+        <Route path="/attendance" element={<PublicAttendancePortal />} />
 
         {/* Public Feedback Share Catalog for Management / Higher Officials */}
         <Route path="/feedback/catalog/:token" element={<PublicFeedbackCatalogPage />} />
@@ -582,6 +589,18 @@ function App() {
             isAdminOrSuper(user) ? (
               <AdminLayout>
                 <SessionManager />
+              </AdminLayout>
+            ) : (
+              <Navigate to={getRoleHomeRedirect(user)} replace />
+            )
+          }
+        />
+        <Route 
+          path="/admin/attendance" 
+          element={
+            isAdminOrSuper(user) ? (
+              <AdminLayout>
+                <AttendanceManagement />
               </AdminLayout>
             ) : (
               <Navigate to={getRoleHomeRedirect(user)} replace />
@@ -1189,6 +1208,18 @@ function App() {
             isAdminOrSuper(user) ? (
               <AdminLayout>
                 <SessionManager />
+              </AdminLayout>
+            ) : (
+              <Navigate to={getRoleHomeRedirect(user)} replace />
+            )
+          } 
+        />
+        <Route 
+          path="/:courseSlug/admin/attendance" 
+          element={
+            isAdminOrSuper(user) ? (
+              <AdminLayout>
+                <AttendanceManagement />
               </AdminLayout>
             ) : (
               <Navigate to={getRoleHomeRedirect(user)} replace />

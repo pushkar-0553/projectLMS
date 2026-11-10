@@ -27,6 +27,7 @@ const examRoutes = require('./routes/examRoutes');
 const mockInterviewRoutes = require('./routes/mockInterviewRoutes');
 const feedbackRoutes = require('./routes/feedbackRoutes');
 const publicFeedbackRoutes = require('./routes/publicFeedbackRoutes');
+const attendanceModuleRoutes = require('./modules/attendance/attendance.routes');
 const { startEmailWorker } = require('./services/emailQueueWorker');
 
 const http = require('http');
@@ -36,6 +37,12 @@ const rateLimit = require('express-rate-limit');
 const { initSocket } = require('./socket');
 
 const app = express();
+// Trust single reverse proxy hop (Render edge) without blindly trusting spoofed X-Forwarded-For chains
+const trustProxyValue = process.env.TRUST_PROXY !== undefined
+  ? (process.env.TRUST_PROXY === 'false' ? false : (Number.isInteger(Number(process.env.TRUST_PROXY)) ? Number(process.env.TRUST_PROXY) : 1))
+  : 1;
+app.set('trust proxy', trustProxyValue);
+
 // Disable ETag and 304 Not Modified responses on dynamic API routes
 app.set('etag', false);
 app.use('/api', (req, res, next) => {
@@ -106,6 +113,7 @@ app.use('/api/projects', projectRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/coordinator', coordinatorRoutes);
 app.use('/api/progress', progressRoutes);
+app.use('/api', attendanceModuleRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/student', studentRoutes);
 app.use('/api/academics', academicRoutes);

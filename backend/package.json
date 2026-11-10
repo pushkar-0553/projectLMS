@@ -12,7 +12,8 @@
     "migrate:v3": "mysql -u root -p < database/migrate_v3.sql",
     "migrate:v5": "node run_migration.js migration_v5_academics.sql",
     "migrate:v6": "node run_migration.js migration_v6_class_links.sql",
-    "migrate:v7": "node run_migration.js migration_v7_class_link_bookmarks.sql"
+    "migrate:v7": "node run_migration.js migration_v7_class_link_bookmarks.sql",
+    "migrate:attendance": "node database/migration_attendance_module.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

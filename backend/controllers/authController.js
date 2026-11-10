@@ -78,8 +78,8 @@ const authController = {
 
       const token = generateToken(user.id, user.role);
 
-      // Issue #1 fix: Strip password from response
-      const { password: _pwd, ...safeUser } = user;
+      // Issue #1 fix: Strip password and attendance_pin_hash from response
+      const { password: _pwd, attendance_pin_hash: _pin, ...safeUser } = user;
 
       // Attach user's course memberships so frontend knows their primary course
       const CourseMembership = require('../models/courseMembershipModel');

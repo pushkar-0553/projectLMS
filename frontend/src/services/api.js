@@ -30,7 +30,8 @@ api.interceptors.request.use(
       'login', 'super-admin', 'resumes', 'public', 'users', 'admin',
       'coordinator', 'student', 'dashboard', 'my-progress', 'academic-progress',
       'project-learning', 'guided-learning', 'messages', 'notifications',
-      'change-password', 'faculty', 'exam', 'mock-interviews', 'feedback'
+      'change-password', 'faculty', 'exam', 'mock-interviews', 'feedback',
+      'attendance'
     ];
     if (pathParts.length > 0 && !reserved.includes(pathParts[0])) {
       config.headers['X-Course-Slug'] = pathParts[0];
@@ -67,6 +68,7 @@ api.interceptors.response.use(
       const isPublicRoute = 
         currentPath.startsWith('/login') ||
         currentPath.startsWith('/public') ||
+        currentPath === '/attendance' ||
         currentPath.includes('/feedback/share') ||
         currentPath.includes('/feedback/catalog') ||
         currentPath.includes('/resumes/share') ||
@@ -239,6 +241,58 @@ export const attendanceAPI = {
 
   getMyAttendanceSummary: (startDate, endDate) =>
     api.get('/attendance/my-summary', { params: { startDate, endDate } }),
+};
+
+export const attendancePortalAPI = {
+  // Public student portal endpoints (timeout tuned for Render cold starts)
+  getPublicStatus: () =>
+    api.get('/public/attendance/status', { skipDedupe: true, timeout: 25000 }),
+  getPublicStudents: (params = {}) =>
+    api.get('/public/attendance/students', { params, timeout: 25000 }),
+  submitOffline: (payload) =>
+    api.post('/public/attendance/offline', payload, { timeout: 25000 }),
+
+  // Admin management endpoints
+  getBatches: (params = {}) =>
+    api.get('/admin/attendance/batches', { params }),
+  getToday: (params = {}) =>
+    api.get('/admin/attendance/today', { params, skipDedupe: true }),
+  getHistory: (params = {}) =>
+    api.get('/admin/attendance/history', { params, skipDedupe: true }),
+  exportHistoryJson: (params = {}) =>
+    api.get('/admin/attendance/export', { params: { ...params, format: 'json' }, skipDedupe: true }),
+  exportHistoryCsv: (params = {}) =>
+    api.get('/admin/attendance/export', { params: { ...params, format: 'csv' }, responseType: 'blob', skipDedupe: true }),
+
+  getWifiSettings: () =>
+    api.get('/admin/attendance/settings', { skipDedupe: true }),
+  updateWifiSettings: (payload) =>
+    api.put('/admin/attendance/settings', payload),
+  testNetworkConfig: (payload) =>
+    api.post('/admin/attendance/settings/test-network', payload),
+
+  getDevices: (params = {}) =>
+    api.get('/admin/attendance/devices', { params, skipDedupe: true }),
+  resetDevice: (deviceId, reason) =>
+    api.post(`/admin/attendance/devices/${deviceId}/reset`, { reason }),
+  getDeviceHistory: (deviceId) =>
+    api.get(`/admin/attendance/devices/${deviceId}/history`, { skipDedupe: true }),
+
+  markManual: (payload) =>
+    api.post('/admin/attendance/manual', payload),
+
+  getSessions: (params = {}) =>
+    api.get('/admin/attendance/sessions', { params, skipDedupe: true }),
+  createSession: (payload) =>
+    api.post('/admin/attendance/sessions', payload),
+  toggleSession: (sessionId, isActive) =>
+    api.patch(`/admin/attendance/sessions/${sessionId}/toggle`, { isActive }),
+
+  getAuditLogs: (params = {}) =>
+    api.get('/admin/attendance/audit-logs', { params, skipDedupe: true }),
+
+  getAdminStudents: (params = {}) =>
+    api.get('/admin/attendance/students', { params, skipDedupe: true })
 };
 
 export const messageAPI = {
