@@ -148,9 +148,9 @@ function normalizeIp(rawIp) {
   let candidate = rawIp.trim();
   if (!candidate) return null;
 
-  // Handle comma-separated string defensively (take first trimmed token only if internal helper is misused)
+  // Reject comma-separated proxy lists so untrusted XFF strings are never blindly split
   if (candidate.includes(',')) {
-    candidate = candidate.split(',')[0].trim();
+    return null;
   }
 
   // Strip bracketed IPv6 with optional port: [2001:db8::1]:443
@@ -243,6 +243,110 @@ function normalizeCidr(rawCidr) {
   };
 }
 
+const CLOUDFLARE_IPV4_CIDRS = [
+  '173.245.48.0/20',
+  '103.21.244.0/22',
+  '103.22.200.0/22',
+  '103.31.4.0/22',
+  '141.101.64.0/18',
+  '108.162.192.0/18',
+  '190.93.240.0/20',
+  '188.114.96.0/20',
+  '197.234.240.0/22',
+  '198.41.128.0/17',
+  '162.158.0.0/15',
+  '104.16.0.0/13',
+  '104.24.0.0/14',
+  '172.64.0.0/13',
+  '131.0.72.0/22'
+];
+
+const CLOUDFLARE_IPV6_CIDRS = [
+  '2400:cb00::/32',
+  '2606:4700::/32',
+  '2803:f800::/32',
+  '2405:b500::/32',
+  '2405:8100::/32',
+  '2a06:98c0::/29',
+  '2c0f:f248::/32'
+];
+
+function isRenderProductionEnv() {
+  return (
+    process.env.RENDER === 'true' ||
+    Boolean(process.env.RENDER_SERVICE_ID || process.env.RENDER_INSTANCE_ID) ||
+    process.env.TRUST_PROXY_MODE === 'render'
+  );
+}
+
+function buildExpressTrustProxyConfig() {
+  if (process.env.TRUST_PROXY !== undefined) {
+    const raw = String(process.env.TRUST_PROXY).trim();
+    if (raw === 'false') return false;
+    if (/^\d+$/.test(raw)) return parseInt(raw, 10);
+    if (raw.includes(',')) {
+      return raw.split(',').map((s) => s.trim()).filter(Boolean);
+    }
+    return raw;
+  }
+
+  const extraCidrs = process.env.TRUSTED_PROXY_CIDRS
+    ? process.env.TRUSTED_PROXY_CIDRS.split(',').map((s) => s.trim()).filter(Boolean)
+    : [];
+
+  if (isRenderProductionEnv()) {
+    // Render routes inbound HTTPS via Cloudflare edge -> Render internal 10.x.x.x LB -> container
+    return [
+      'loopback',
+      'linklocal',
+      'uniquelocal',
+      ...CLOUDFLARE_IPV4_CIDRS,
+      ...CLOUDFLARE_IPV6_CIDRS,
+      ...extraCidrs
+    ];
+  }
+
+  // Local development: trust only local loopback proxies
+  return ['loopback', ...extraCidrs];
+}
+
+const NON_PUBLIC_BLOCKLIST = (() => {
+  const bl = new net.BlockList();
+  // IPv4 non-public (loopback, RFC1918, link-local, CGNAT, unspecified)
+  bl.addSubnet('127.0.0.0', 8, 'ipv4');
+  bl.addSubnet('10.0.0.0', 8, 'ipv4');
+  bl.addSubnet('172.16.0.0', 12, 'ipv4');
+  bl.addSubnet('192.168.0.0', 16, 'ipv4');
+  bl.addSubnet('169.254.0.0', 16, 'ipv4');
+  bl.addSubnet('100.64.0.0', 10, 'ipv4');
+  bl.addSubnet('0.0.0.0', 8, 'ipv4');
+  // IPv6 non-public (loopback, ULA, link-local, unspecified)
+  bl.addAddress('::1', 'ipv6');
+  bl.addAddress('::', 'ipv6');
+  bl.addSubnet('fc00::', 7, 'ipv6');
+  bl.addSubnet('fe80::', 10, 'ipv6');
+  return bl;
+})();
+
+function isNonPublicIp(rawIp) {
+  const norm = normalizeIp(rawIp);
+  if (!norm) return true;
+  return NON_PUBLIC_BLOCKLIST.check(norm.ip, norm.family);
+}
+
+/**
+ * Centralized verified client IP resolver.
+ * Uses Express's trusted-proxy-resolved req.ip (falling back to req.socket.remoteAddress)
+ * and normalizes IPv4 / IPv6 / IPv4-mapped IPv6 addresses.
+ * Never reads client-supplied body/query IP fields or unverified forwarded headers.
+ */
+function getVerifiedClientIP(req) {
+  if (!req) return null;
+  const candidate = req.ip || req.socket?.remoteAddress || req.connection?.remoteAddress || null;
+  const norm = normalizeIp(candidate);
+  return norm ? norm.ip : null;
+}
+
 function checkIpMatchesSettings(rawClientIp, settings) {
   const normClient = normalizeIp(rawClientIp);
   if (!normClient) {
@@ -254,16 +358,28 @@ function checkIpMatchesSettings(rawClientIp, settings) {
     };
   }
 
+  // On Render production, refuse non-public/internal proxy IPs so a proxy hop can never pass
+  if (isRenderProductionEnv() && isNonPublicIp(normClient.ip)) {
+    return {
+      matched: false,
+      normalizedIp: normClient.ip,
+      family: normClient.family,
+      reason: 'Detected an internal proxy IP instead of a public client IP. Proxy verification failed safely.'
+    };
+  }
+
   const allowedIpv4 = Array.isArray(settings?.allowed_ipv4) ? settings.allowed_ipv4 : [];
   const allowedIpv6 = Array.isArray(settings?.allowed_ipv6) ? settings.allowed_ipv6 : [];
   const allowedCidrs = Array.isArray(settings?.allowed_cidrs) ? settings.allowed_cidrs : [];
 
   const blockList = new net.BlockList();
   let ruleCount = 0;
+  const onRender = isRenderProductionEnv();
 
   for (const entry of allowedIpv4) {
     const norm = normalizeIp(entry);
     if (norm && norm.family === 'ipv4') {
+      if (onRender && isNonPublicIp(norm.ip)) continue;
       blockList.addAddress(norm.ip, 'ipv4');
       ruleCount++;
     }
@@ -272,6 +388,7 @@ function checkIpMatchesSettings(rawClientIp, settings) {
   for (const entry of allowedIpv6) {
     const norm = normalizeIp(entry);
     if (norm && norm.family === 'ipv6') {
+      if (onRender && isNonPublicIp(norm.ip)) continue;
       blockList.addAddress(norm.ip, 'ipv6');
       ruleCount++;
     }
@@ -280,6 +397,7 @@ function checkIpMatchesSettings(rawClientIp, settings) {
   for (const entry of allowedCidrs) {
     const normCidr = normalizeCidr(entry);
     if (normCidr) {
+      if (onRender && isNonPublicIp(normCidr.network)) continue;
       blockList.addSubnet(normCidr.network, normCidr.prefix, normCidr.family);
       ruleCount++;
     }
@@ -290,7 +408,7 @@ function checkIpMatchesSettings(rawClientIp, settings) {
       matched: false,
       normalizedIp: normClient.ip,
       family: normClient.family,
-      reason: 'Institute Wi-Fi IP allowlist is not configured yet.'
+      reason: 'Institute Wi-Fi public IP allowlist is not configured yet.'
     };
   }
 
@@ -377,6 +495,10 @@ module.exports = {
   normalizeIp,
   ipToBuffer,
   normalizeCidr,
+  buildExpressTrustProxyConfig,
+  isNonPublicIp,
+  isRenderProductionEnv,
+  getVerifiedClientIP,
   checkIpMatchesSettings,
   isValidUuid,
   generateSessionCode,

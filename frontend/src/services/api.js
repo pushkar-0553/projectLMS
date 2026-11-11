@@ -246,9 +246,17 @@ export const attendanceAPI = {
 export const attendancePortalAPI = {
   // Public student portal endpoints (timeout tuned for Render cold starts)
   getPublicStatus: () =>
-    api.get('/public/attendance/status', { skipDedupe: true, timeout: 25000 }),
+    api.get('/public/attendance/status', {
+      skipDedupe: true,
+      params: { _t: Date.now() },
+      timeout: 25000
+    }),
   getPublicStudents: (params = {}) =>
-    api.get('/public/attendance/students', { params, timeout: 25000 }),
+    api.get('/public/attendance/students', {
+      skipDedupe: true,
+      params: { ...params, _t: Date.now() },
+      timeout: 25000
+    }),
   submitOffline: (payload) =>
     api.post('/public/attendance/offline', payload, { timeout: 25000 }),
 
@@ -265,11 +273,19 @@ export const attendancePortalAPI = {
     api.get('/admin/attendance/export', { params: { ...params, format: 'csv' }, responseType: 'blob', skipDedupe: true }),
 
   getWifiSettings: () =>
-    api.get('/admin/attendance/settings', { skipDedupe: true }),
+    api.get('/admin/attendance/settings', {
+      skipDedupe: true,
+      params: { _t: Date.now() }
+    }),
   updateWifiSettings: (payload) =>
     api.put('/admin/attendance/settings', payload),
   testNetworkConfig: (payload) =>
     api.post('/admin/attendance/settings/test-network', payload),
+  getNetworkDiagnostics: () =>
+    api.get('/admin/attendance/diagnostics/network', {
+      skipDedupe: true,
+      params: { _t: Date.now() }
+    }),
 
   getDevices: (params = {}) =>
     api.get('/admin/attendance/devices', { params, skipDedupe: true }),

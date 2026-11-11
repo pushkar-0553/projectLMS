@@ -122,6 +122,35 @@ export default function PublicAttendancePortal() {
     fetchStudents('');
   }, []);
 
+  // Re-verify network eligibility immediately if the student switches Wi-Fi <-> Mobile Data or returns to the tab
+  useEffect(() => {
+    const handleRecheck = () => {
+      if (document.visibilityState === 'hidden' || confirmation) return;
+      fetchStatus();
+    };
+
+    window.addEventListener('focus', handleRecheck);
+    window.addEventListener('online', handleRecheck);
+    document.addEventListener('visibilitychange', handleRecheck);
+
+    const conn =
+      typeof navigator !== 'undefined'
+        ? navigator.connection || navigator.mozConnection || navigator.webkitConnection
+        : null;
+    if (conn && typeof conn.addEventListener === 'function') {
+      conn.addEventListener('change', handleRecheck);
+    }
+
+    return () => {
+      window.removeEventListener('focus', handleRecheck);
+      window.removeEventListener('online', handleRecheck);
+      document.removeEventListener('visibilitychange', handleRecheck);
+      if (conn && typeof conn.removeEventListener === 'function') {
+        conn.removeEventListener('change', handleRecheck);
+      }
+    };
+  }, [confirmation]);
+
   useEffect(() => {
     if (studentsTotal <= 250) return;
     const handle = setTimeout(() => {

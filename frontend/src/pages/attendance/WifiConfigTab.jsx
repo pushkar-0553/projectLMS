@@ -1,6 +1,33 @@
 import React, { useState, useEffect } from 'react';
-import { Wifi, ShieldCheck, Save, Plus, Play } from 'lucide-react';
+import { Wifi, ShieldCheck, Save, Plus, Play, Activity } from 'lucide-react';
 import { attendancePortalAPI } from '../../services/api';
+
+const isNonPublicEntry = (entry) => {
+  const host = String(entry || '').trim().split('/')[0].replace(/^\[|\]$/g, '').toLowerCase();
+  if (!host) return false;
+  const v4 = host.startsWith('::ffff:') ? host.slice(7) : host;
+  const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(v4);
+  if (m) {
+    const a = Number(m[1]);
+    const b = Number(m[2]);
+    return (
+      a === 0 ||
+      a === 10 ||
+      a === 127 ||
+      (a === 169 && b === 254) ||
+      (a === 172 && b >= 16 && b <= 31) ||
+      (a === 192 && b === 168) ||
+      (a === 100 && b >= 64 && b <= 127)
+    );
+  }
+  return (
+    host === '::' ||
+    host === '::1' ||
+    host === '0:0:0:0:0:0:0:1' ||
+    /^fe[89ab][0-9a-f]:/i.test(host) ||
+    /^f[cd][0-9a-f]{2}:/i.test(host)
+  );
+};
 
 function parseListInput(text) {
   return String(text || '')
@@ -26,6 +53,10 @@ export default function WifiConfigTab() {
   const [currentClientFamily, setCurrentClientFamily] = useState('');
   const [testIpInput, setTestIpInput] = useState('');
   const [testResult, setTestResult] = useState(null);
+  const [diagData, setDiagData] = useState(null);
+  const [diagLoading, setDiagLoading] = useState(false);
+  const [diagOpen, setDiagOpen] = useState(false);
+  const [diagError, setDiagError] = useState(null);
 
   const [notice, setNotice] = useState(null);
 
@@ -105,6 +136,25 @@ export default function WifiConfigTab() {
   };
 
   const isLoopbackIp = currentClientIp === '127.0.0.1' || currentClientIp === '::1';
+  const privateConfiguredEntries = [
+    ...parseListInput(ipv4Text),
+    ...parseListInput(ipv6Text),
+    ...parseListInput(cidrText)
+  ].filter(isNonPublicEntry);
+
+  const handleInspectDiagnostics = async () => {
+    setDiagLoading(true);
+    setDiagError(null);
+    try {
+      const res = await attendancePortalAPI.getNetworkDiagnostics();
+      setDiagData(res.data?.data || res.data || null);
+      setDiagOpen(true);
+    } catch (err) {
+      setDiagError(err.response?.data?.message || 'Failed to inspect proxy diagnostics.');
+    } finally {
+      setDiagLoading(false);
+    }
+  };
 
   const handleAddCurrentIp = () => {
     if (!currentClientIp) return;
@@ -156,6 +206,21 @@ export default function WifiConfigTab() {
             — if your ISP/Wi-Fi only uses IPv4, leave IPv6 blank.
           </span>
         </div>
+
+        {privateConfiguredEntries.length > 0 && (
+          <div className="att-status-banner warning" style={{ marginBottom: 14 }}>
+            <div style={{ fontWeight: 700, marginBottom: 4 }}>
+              Warning: Non-public / internal IP entries configured
+            </div>
+            <div style={{ fontSize: 13 }}>
+              Detected non-public entry/entries:{' '}
+              <span className="att-mono">{privateConfiguredEntries.join(', ')}</span>. Remove
+              private proxy/localhost IPs (e.g. <code>10.x.x.x</code>, <code>127.0.0.1</code>,{' '}
+              <code>::1</code>) so only your institute&apos;s public IP/CIDR is trusted in
+              production.
+            </div>
+          </div>
+        )}
 
         {isLoopbackIp && (
           <div className="att-status-banner warning" style={{ marginBottom: 14 }}>
@@ -343,6 +408,64 @@ export default function WifiConfigTab() {
         >
           <Play size={14} /> {testing ? 'Testing...' : 'Test Network Match'}
         </button>
+
+        <button
+          type="button"
+          className="att-btn"
+          style={{
+            marginLeft: 8,
+            background: '#f8fafc',
+            border: '1px solid #cbd5e1',
+            color: '#0f172a'
+          }}
+          onClick={handleInspectDiagnostics}
+          disabled={diagLoading}
+        >
+          <Activity size={14} /> {diagLoading ? 'Inspecting...' : 'Inspect Proxy Diagnostics'}
+        </button>
+
+        {diagError && (
+          <div className="att-status-banner error" style={{ marginTop: 12 }}>
+            {diagError}
+          </div>
+        )}
+
+        {diagData && (
+          <div style={{ marginTop: 12 }}>
+            <button
+              type="button"
+              className="att-btn"
+              style={{
+                padding: '4px 10px',
+                fontSize: 12,
+                background: '#f1f5f9',
+                border: '1px solid #cbd5e1',
+                color: '#334155',
+                marginBottom: 8
+              }}
+              onClick={() => setDiagOpen((prev) => !prev)}
+            >
+              {diagOpen ? 'Hide Proxy Diagnostics JSON' : 'Show Proxy Diagnostics JSON'}
+            </button>
+            {diagOpen && (
+              <pre
+                className="att-mono"
+                style={{
+                  margin: 0,
+                  padding: 12,
+                  borderRadius: 8,
+                  background: '#0f172a',
+                  color: '#e2e8f0',
+                  fontSize: 12,
+                  overflowX: 'auto',
+                  lineHeight: 1.5
+                }}
+              >
+                {JSON.stringify(diagData, null, 2)}
+              </pre>
+            )}
+          </div>
+        )}
 
         {testResult && (
           <div

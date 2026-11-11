@@ -59,5 +59,6 @@ router.patch('/admin/attendance/sessions/:sessionId/toggle', ...adminAuth, admin
 
 router.get('/admin/attendance/audit-logs', ...adminAuth, ctrl.getAuditLogs);
 router.get('/admin/attendance/students', ...adminAuth, ctrl.getAdminStudents);
+router.get('/admin/attendance/diagnostics/network', ...adminAuth, ctrl.getNetworkDiagnostics);
 
 module.exports = router;

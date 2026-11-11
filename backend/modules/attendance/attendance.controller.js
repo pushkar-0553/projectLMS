@@ -10,6 +10,18 @@ const {
   validateCreateSession
 } = require('./attendance.validation');
 const { AppError } = require('./attendance.repository');
+const { getVerifiedClientIP } = require('./attendance.utils');
+
+function setNoStoreHeaders(res) {
+  res.set({
+    'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
+    Pragma: 'no-cache',
+    Expires: '0',
+    'Surrogate-Control': 'no-store',
+    'CDN-Cache-Control': 'no-store',
+    Vary: 'Origin, X-Forwarded-For'
+  });
+}
 
 function handleControllerError(res, err, contextLabel) {
   if (err instanceof ValidationError || err instanceof AppError) {
@@ -42,7 +54,9 @@ const attendanceController = {
 
   async getPublicStatus(req, res) {
     try {
-      const data = await AttendanceService.getPublicStatus(req.clientIp);
+      setNoStoreHeaders(res);
+      const clientIp = getVerifiedClientIP(req);
+      const data = await AttendanceService.getPublicStatus(clientIp);
       return res.json({ success: true, data });
     } catch (err) {
       return handleControllerError(res, err, 'getPublicStatus');
@@ -51,6 +65,7 @@ const attendanceController = {
 
   async getPublicStudents(req, res) {
     try {
+      setNoStoreHeaders(res);
       const data = await AttendanceService.getPublicEligibleStudents(req.query);
       return res.json({ success: true, ...data });
     } catch (err) {
@@ -60,10 +75,12 @@ const attendanceController = {
 
   async submitOfflineAttendance(req, res) {
     try {
+      setNoStoreHeaders(res);
       const validated = validateOfflineSubmission(req.body);
+      const clientIp = getVerifiedClientIP(req);
       const confirmation = await AttendanceService.submitOfflineAttendance({
         ...validated,
-        clientIp: req.clientIp,
+        clientIp,
         userAgent: req.headers['user-agent'] || null
       });
       return res.status(201).json({
@@ -81,9 +98,10 @@ const attendanceController = {
       const validated = validateOnlineSubmission(req.body);
       const confirmation = await AttendanceService.submitOnlineAttendance({
         ...validated,
-        clientIp: req.clientIp,
+        clientIp: getVerifiedClientIP(req),
         userAgent: req.headers['user-agent'] || null
       });
+      setNoStoreHeaders(res);
       return res.status(201).json({
         success: true,
         message: 'Online attendance recorded successfully.',
@@ -144,7 +162,8 @@ const attendanceController = {
 
   async getWifiSettings(req, res) {
     try {
-      const data = await AttendanceService.getWifiSettings(req.clientIp);
+      setNoStoreHeaders(res);
+      const data = await AttendanceService.getWifiSettings(getVerifiedClientIP(req));
       return res.json({ success: true, ...data });
     } catch (err) {
       return handleControllerError(res, err, 'getWifiSettings');
@@ -171,7 +190,8 @@ const attendanceController = {
 
   async testNetworkConfig(req, res) {
     try {
-      const result = await AttendanceService.testNetworkConfig(req.body, req.clientIp);
+      setNoStoreHeaders(res);
+      const result = await AttendanceService.testNetworkConfig(req.body, getVerifiedClientIP(req));
       return res.json({ success: true, data: result });
     } catch (err) {
       return handleControllerError(res, err, 'testNetworkConfig');
@@ -297,6 +317,16 @@ const attendanceController = {
       return res.json({ success: true, ...data });
     } catch (err) {
       return handleControllerError(res, err, 'getAdminStudents');
+    }
+  },
+
+  async getNetworkDiagnostics(req, res) {
+    try {
+      setNoStoreHeaders(res);
+      const data = AttendanceService.getNetworkDiagnostics(req);
+      return res.json({ success: true, data });
+    } catch (err) {
+      return handleControllerError(res, err, 'getNetworkDiagnostics');
     }
   }
 };

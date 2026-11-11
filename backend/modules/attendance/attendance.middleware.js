@@ -1,14 +1,14 @@
 const rateLimit = require('express-rate-limit');
 const { ipKeyGenerator } = rateLimit;
-const { normalizeIp } = require('./attendance.utils');
+const { getVerifiedClientIP, normalizeIp } = require('./attendance.utils');
 
 /**
- * Extracts and normalizes the client public IP resolved by Express's trusted proxy config.
- * Never reads client-supplied body/query IP fields.
+ * Extracts and normalizes the client public IP via the centralized getVerifiedClientIP utility.
+ * Never reads client-supplied body/query IP fields or unverified forwarded headers.
  */
 function extractClientIp(req, res, next) {
-  const rawIp = req.ip || req.socket?.remoteAddress || '';
-  const normalized = normalizeIp(rawIp);
+  const verifiedIp = getVerifiedClientIP(req);
+  const normalized = verifiedIp ? normalizeIp(verifiedIp) : null;
   req.clientIp = normalized ? normalized.ip : null;
   req.clientIpFamily = normalized ? normalized.family : null;
   next();
@@ -23,7 +23,7 @@ const publicReadLimiter = rateLimit({
   max: 500,
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => ipKeyGenerator(req.ip || '0.0.0.0'),
+  keyGenerator: (req) => ipKeyGenerator(getVerifiedClientIP(req) || req.ip || '0.0.0.0'),
   message: {
     success: false,
     message: 'Too many requests from this network. Please wait a moment and try again.'
@@ -40,7 +40,7 @@ const studentPinSubmitLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: (req) => {
-    const ipKey = ipKeyGenerator(req.ip || '0.0.0.0');
+    const ipKey = ipKeyGenerator(getVerifiedClientIP(req) || req.ip || '0.0.0.0');
     const sid = req.body?.studentId ? String(req.body.studentId).trim() : 'anon';
     return `${ipKey}::student:${sid}`;
   },
@@ -58,7 +58,7 @@ const campusSubmitBurstLimiter = rateLimit({
   max: 400,
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => ipKeyGenerator(req.ip || '0.0.0.0'),
+  keyGenerator: (req) => ipKeyGenerator(getVerifiedClientIP(req) || req.ip || '0.0.0.0'),
   message: {
     success: false,
     message: 'Submission rate limit reached for this network. Please wait a few minutes.'

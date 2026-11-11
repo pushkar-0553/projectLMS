@@ -1,4 +1,4 @@
-const { normalizeIp, normalizeCidr, isValidUuid } = require('./attendance.utils');
+const { normalizeIp, normalizeCidr, isValidUuid, isNonPublicIp, isRenderProductionEnv } = require('./attendance.utils');
 
 class ValidationError extends Error {
   constructor(message, statusCode = 400) {
@@ -120,6 +120,24 @@ function validateWifiSettings(body = {}) {
   const allowedIpv4 = validateIpList(body.allowedIpv4, 'ipv4', 'IPv4 address');
   const allowedIpv6 = validateIpList(body.allowedIpv6, 'ipv6', 'IPv6 address');
   const allowedCidrs = validateCidrList(body.allowedCidrs);
+
+  if (isRenderProductionEnv()) {
+    for (const ip of [...allowedIpv4, ...allowedIpv6]) {
+      if (isNonPublicIp(ip)) {
+        throw new ValidationError(
+          `Private or internal proxy IP "${ip}" cannot be whitelisted in production. Enter only your institute's public IP address.`
+        );
+      }
+    }
+    for (const cidr of allowedCidrs) {
+      const netPart = cidr.split('/')[0];
+      if (isNonPublicIp(netPart)) {
+        throw new ValidationError(
+          `Private or internal proxy CIDR "${cidr}" cannot be whitelisted in production. Enter only public IP ranges.`
+        );
+      }
+    }
+  }
 
   return {
     networkDisplayName,

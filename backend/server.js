@@ -28,6 +28,7 @@ const mockInterviewRoutes = require('./routes/mockInterviewRoutes');
 const feedbackRoutes = require('./routes/feedbackRoutes');
 const publicFeedbackRoutes = require('./routes/publicFeedbackRoutes');
 const attendanceModuleRoutes = require('./modules/attendance/attendance.routes');
+const { buildExpressTrustProxyConfig } = require('./modules/attendance/attendance.utils');
 const { startEmailWorker } = require('./services/emailQueueWorker');
 
 const http = require('http');
@@ -37,18 +38,17 @@ const rateLimit = require('express-rate-limit');
 const { initSocket } = require('./socket');
 
 const app = express();
-// Trust single reverse proxy hop (Render edge) without blindly trusting spoofed X-Forwarded-For chains
-const trustProxyValue = process.env.TRUST_PROXY !== undefined
-  ? (process.env.TRUST_PROXY === 'false' ? false : (Number.isInteger(Number(process.env.TRUST_PROXY)) ? Number(process.env.TRUST_PROXY) : 1))
-  : 1;
-app.set('trust proxy', trustProxyValue);
+// Trust only verified Render internal proxy hops & Cloudflare edge ranges (never arbitrary XFF chains)
+app.set('trust proxy', buildExpressTrustProxyConfig());
 
 // Disable ETag and 304 Not Modified responses on dynamic API routes
 app.set('etag', false);
 app.use('/api', (req, res, next) => {
-  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
   res.set('Pragma', 'no-cache');
   res.set('Expires', '0');
+  res.set('Surrogate-Control', 'no-store');
+  res.set('CDN-Cache-Control', 'no-store');
   next();
 });
 

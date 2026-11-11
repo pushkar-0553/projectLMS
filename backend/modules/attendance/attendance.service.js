@@ -1,4 +1,6 @@
+const crypto = require('crypto');
 const { AttendanceRepository, AppError } = require('./attendance.repository');
+const { getPerfContext } = require('../../utils/perfTracker');
 const {
   getIstDateString,
   getIstOffsetDateString,
@@ -7,6 +9,8 @@ const {
   toUtcMysqlDatetime,
   parseUtcDate,
   normalizeIp,
+  getVerifiedClientIP,
+  isRenderProductionEnv,
   checkIpMatchesSettings,
   generateSessionCode,
   sanitizeCsvCell,
@@ -38,6 +42,14 @@ class AttendanceService {
     const settings = await AttendanceRepository.getSettings();
     const todayIst = getIstDateString(now);
     const ipResult = checkIpMatchesSettings(clientIp, settings);
+
+    console.info('[AttendanceIPVerify]', JSON.stringify({
+      stage: 'public_status',
+      verifiedIp: ipResult.normalizedIp || null,
+      family: ipResult.family || null,
+      matched: ipResult.matched,
+      reason: ipResult.reason || null,
+    }));
 
     const offlineEligible = Boolean(settings.offline_attendance_enabled && ipResult.matched);
 
@@ -97,6 +109,13 @@ class AttendanceService {
 
     // Revalidate network eligibility on every submission (never trust frontend)
     const ipCheck = checkIpMatchesSettings(clientIp, settings);
+    console.info('[AttendanceIPVerify]', JSON.stringify({
+      stage: 'offline_submit',
+      verifiedIp: ipCheck.normalizedIp || null,
+      family: ipCheck.family || null,
+      matched: ipCheck.matched,
+      reason: ipCheck.reason || null,
+    }));
     if (!ipCheck.matched) {
       throw new AppError(
         ipCheck.reason || 'Please connect to the institute Wi-Fi network to mark offline attendance.',
@@ -691,6 +710,32 @@ class AttendanceService {
       limit,
       offset
     });
+  }
+
+  getNetworkDiagnostics(req) {
+    const perfCtx = getPerfContext();
+    const requestId = req.headers['x-request-id'] || perfCtx?.reqId || crypto.randomUUID();
+    const verifiedClientIp = getVerifiedClientIP(req);
+
+    const snapshot = {
+      verifiedClientIp,
+      reqIp: req.ip || null,
+      reqIps: Array.isArray(req.ips) ? req.ips : [],
+      socketRemoteAddress: req.socket?.remoteAddress || null,
+      xForwardedFor: req.headers['x-forwarded-for'] || null,
+      xRealIp: req.headers['x-real-ip'] || null,
+      cfConnectingIp: req.headers['cf-connecting-ip'] || null,
+      trueClientIp: req.headers['true-client-ip'] || null,
+      requestTimestamp: new Date().toISOString(),
+      requestId,
+      renderInstanceId: process.env.RENDER_INSTANCE_ID || null,
+      renderServiceId: process.env.RENDER_SERVICE_ID || null,
+      renderRegion: process.env.RENDER_REGION || null,
+      isRenderEnvironment: isRenderProductionEnv()
+    };
+
+    console.info('[AttendanceNetworkDiag]', JSON.stringify(snapshot));
+    return snapshot;
   }
 }
 
