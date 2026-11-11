@@ -92,7 +92,7 @@ export default function PublicAttendancePortal() {
     } catch (err) {
       setStatusError(
         err.response?.data?.message ||
-          'Unable to reach attendance server. If the server was sleeping, please retry in a few seconds.'
+        'Unable to reach attendance server. If the server was sleeping, please retry in a few seconds.'
       );
     } finally {
       clearTimeout(coldTimer);
@@ -210,7 +210,7 @@ export default function PublicAttendancePortal() {
     } catch (err) {
       setSubmitError(
         err.response?.data?.message ||
-          'Could not submit attendance. Please check your details and try again.'
+        'Could not submit attendance. Please check your details and try again.'
       );
       if (err.response?.data?.code === 'NETWORK_NOT_VERIFIED') {
         fetchStatus();
@@ -336,9 +336,7 @@ export default function PublicAttendancePortal() {
                     <Wifi size={17} style={{ flexShrink: 0, marginTop: 2 }} />
                     <div>
                       <strong>Connected to {networkStatus.networkDisplayName}</strong>
-                      <div style={{ fontSize: 12, marginTop: 2 }}>
-                        Verified IP: <span className="att-mono">{networkStatus.clientIp}</span>
-                      </div>
+
                     </div>
                   </div>
                   <button type="button" className="att-recheck-btn" onClick={fetchStatus}>
@@ -360,18 +358,6 @@ export default function PublicAttendancePortal() {
                           ? `Please connect to ${networkStatus.networkDisplayName} and disable any VPN to mark attendance.`
                           : networkStatus?.verificationMessage}
                       </div>
-                      {networkStatus?.clientIp && (
-                        <div style={{ fontSize: 11.5, marginTop: 4, opacity: 0.9 }}>
-                          Detected IP: <span className="att-mono">{networkStatus.clientIp}</span>
-                          {isLoopback && (
-                            <span>
-                              {' '}
-                              (localhost loopback — enable Localhost in Admin Wi-Fi settings for local
-                              dev)
-                            </span>
-                          )}
-                        </div>
-                      )}
                     </div>
                   </div>
                   <button type="button" className="att-recheck-btn" onClick={fetchStatus}>
@@ -560,12 +546,6 @@ export default function PublicAttendancePortal() {
             </>
           )}
         </div>
-
-        <p className="att-public-footer">
-          Browser installation ID (<span className="att-mono">{deviceUuid.slice(0, 8)}…</span>) is
-          saved locally to enforce single-student browser binding. Clearing browser storage resets
-          this ID and requires an administrator device reset. All attendance dates follow Asia/Kolkata (IST).
-        </p>
       </div>
     </div>
   );
